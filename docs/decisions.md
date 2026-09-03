@@ -9,3 +9,7 @@ Newest first. One line per decision: date, what we decided, why.
 - 2026-09-03 — NDI deferred to its own phase, not v1.
 
 - 2026-09-03 — Project created at `~/Docrock/HQ/projects/stage-time`, own git repo, GitHub `docrock/stage-time` (private). Kept out of the docrock-hq repo so it can ship on its own.
+- 2026-09-03 — Portability is a hard requirement: production Mac rotates (Darth Nihilus now, new M5 Ultra Mac Studio inbound). Setup = clone + `npm start`, nothing else.
+- 2026-09-03 — Zero runtime dependencies, Node stdlib only, no build step for the server. Reason: needing `npm install` at a venue means needing venue internet, which defeats the whole project. Vendor anything essential.
+- 2026-09-03 — No native modules in core; second reason NDI stays an optional separate module.
+- 2026-09-03 — Rundowns are plain JSON files in `shows/`, versioned with the repo. The show file is the document; no export step.

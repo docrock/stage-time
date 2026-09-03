@@ -81,6 +81,56 @@ Venue wifi is assumed hostile or absent. In order of how much I'd trust them liv
 Access is by URL: `http://<host>.local:7373/presenter`. Print the QR codes for the show file
 and stick them to the console.
 
+## Portability: the repo is the install
+
+The host is not a machine, it's whichever Mac has this repo running that week. Doc's
+production machine rotates — right now it's Darth Nihilus, a new M5 Ultra Mac Studio is
+inbound to displace Max Rebo, and the show machine changes with the gig. So the setup story
+has to be:
+
+```
+git clone git@github.com:docrock/stage-time.git
+cd stage-time
+npm start
+```
+
+That's it. Which forces a few rules on us:
+
+**Zero runtime dependencies.** Node's standard library only — `http`, `fs`, `path`. No
+Express, no framework, no build step for the server. This is not minimalism for its own sake:
+if setup requires `npm install`, then setting up at a venue requires a working internet
+connection, and the entire premise of this project is that the venue's internet is garbage or
+absent. A fresh clone must run on a machine that has never seen the network. Anything we
+genuinely need gets vendored into the repo.
+
+**No native modules in core.** A compiled addon turns "clone and run" into "clone, install
+build tools, pray." That's the second reason NDI lives in its own optional module — a plain
+clone must never fail because of a thing most shows won't use.
+
+**Nothing hardcoded about the machine.** No baked hostnames or IPs. On boot the server finds
+its own LAN addresses and prints the full set of URLs plus QR codes to the terminal:
+
+```
+Stage Time running.
+  Control    http://Darth-Nihilus-2.local:7373/control
+             http://192.168.1.44:7373/control
+  Presenter  http://192.168.1.44:7373/presenter
+  Ecamm      http://192.168.1.44:7373/presenter?transparent=1
+```
+
+Both the Bonjour name and the raw IP, because `.local` resolution is the flakiest link in the
+chain and a raw IP always works.
+
+**Shows are portable files.** A rundown is one JSON file in `shows/`. It travels with the
+clone, diffs readably in git, and can be handed to Marielou or pulled onto a different
+machine without an export step. The show file *is* the document.
+
+**Pin the Node version.** `.nvmrc` and an engines field, so a machine with an ancient or
+bleeding-edge Node fails loudly at setup instead of weirdly at showtime.
+
+Rehearsal rule that follows from all this: clone it onto the show machine and run it *before*
+you leave the house, on your own wifi. The venue is not where you find out.
+
 ## Build order
 
 1. Server plus state model, one `/presenter` view, transparent mode. → useful in Ecamm alone.
