@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Control · Stage Time</title>
+<link rel="stylesheet" href="./st.css">
+<style>
+  /* The console is a working surface, not a display. It scrolls, it has chrome,
+     and it never tries to be pretty at the cost of being readable at a glance. */
+
+  body { overflow: hidden; }
+
+  #app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  /* --- header ------------------------------------------------------------ */
+
+  .topbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+  }
+  .topbar h1 { font-size: 15px; margin: 0; font-weight: 700; letter-spacing: 0.01em; }
+  .topbar .spacer { flex: 1; }
+
+  /* Connection state. Connected is deliberately quiet so it never competes with the
+     transport; OFFLINE is loud because a click that did not land is a show-stopper. */
+  .conn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    border: 1px solid var(--line);
+    color: var(--dim);
+    white-space: nowrap;
+  }
+  .conn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .conn[data-on='true'] .dot { background: var(--running); }
+  .conn[data-on='false'] {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+    animation: conn-flash 1s steps(1, end) infinite;
+  }
+  .conn[data-on='false'] .dot { background: #fff; }
+  @keyframes conn-flash { 50% { opacity: 0.45; } }
+  @media (prefers-reduced-motion: reduce) { .conn[data-on='false'] { animation: none; } }
+
+  /* --- pending gate ------------------------------------------------------ */
+
+  /* Loud, top of page, full width. Deliberately NOT a modal: the producer can
+     submit a rundown mid-talk and the transport must stay clickable throughout. */
+  #pending {
+    flex: none;
+    border: 2px solid var(--warning);
+    background: linear-gradient(180deg, rgb(245 182 10 / 0.16), rgb(245 182 10 / 0.06));
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    display: none;
+  }
+  #pending.on { display: block; }
+  .pending-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .pending-head .tag {
+    background: var(--warning);
+    color: #1a1300;
+    font-weight: 800;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    padding: 3px 9px;
+    border-radius: 6px;
+  }
+  .pending-head strong { font-size: 15px; }
+  .pending-list {
+    margin: 0 0 10px;
+    padding-left: 20px;
+    max-height: 22vh;
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  .pending-list li.guarded { color: #ffd873; font-weight: 600; }
+  .pending-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* --- three column body ------------------------------------------------- */
+
+  .cols {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(280px, 1.05fr) minmax(320px, 1.15fr) minmax(280px, 1fr);
+    gap: 10px;
+  }
+  .col {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .panel { padding: 12px; }
+  .panel > h2 {
+    margin: 0 0 10px;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+    font-weight: 700;
+  }
+
+  /* --- rundown ----------------------------------------------------------- */
+
+  #rows { display: flex; flex-direction: column; gap: 6px; }
+
+  .row {
+    width: 100%;
+    text-align: left;
+    display: block;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--line);
+    border-radius: 10px;
+    padding: 9px 11px;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+  }
+  .row:hover { background: #1e2230; }
+  .row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .row[data-live='true'] { border-left-color: var(--running); background: rgb(34 197 94 / 0.09); }
+  .row[data-next='true'] { border-left-color: #93a3bd; }
+  .row[data-done='true'] { opacity: 0.55; }
+  .row[data-arming='true'] {
+    border-color: var(--warning);
+    border-left-color: var(--warning);
+    background: rgb(245 182 10 / 0.12);
+  }
+
+  .row-top { display: flex; align-items: baseline; gap: 8px; }
+  .row-num {
+    font-family: var(--mono);
+    color: var(--dim);
+    font-size: 12px;
+    min-width: 1.6em;
+  }
+  .row-title { font-weight: 650; flex: 1; line-height: 1.25; }
+  .row-dur { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .row-sub {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 5px;
+    font-size: 12px;
+    color: var(--muted);
+    min-height: 18px;
+  }
+  .row-proj { font-family: var(--mono); font-size: 12px; }
+  .slack-ok { color: var(--running); }
+  .slack-tight { color: var(--warning); }
+  .slack-late { color: var(--danger); font-weight: 700; }
+
+  /* Inline arm confirmation. A browser confirm() steals focus and blocks the render
+     loop, which is exactly wrong on a live console. */
+  .confirm {
+    display: none;
+    margin-top: 8px;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .row[data-arming='true'] .confirm { display: flex; }
+  .confirm .warn-text { font-size: 12px; color: #ffd873; font-weight: 600; flex: 1; }
+  .confirm .btn { padding: 6px 12px; font-size: 13px; }
+
+  /* --- transport --------------------------------------------------------- */
+
+  /* Bounded height on purpose: this is an operator console, so the digits must not
+     push the buttons off the screen. */
+  #timerbox { height: clamp(120px, 20vh, 190px); flex: none; }
+
+  #nowTitle { font-size: 19px; font-weight: 700; line-height: 1.2; }
+  #nowSpeaker { font-size: 13px; }
+  #nextLine { font-size: 13px; margin-top: 5px; }
+  #nextLine b { color: var(--text); }
+
+  .transport { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; }
+  .transport .btn { padding: 16px 10px; font-size: 16px; }
+  #btnToggle { font-size: 19px; }
+
+  .nudge { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .nudge .btn { padding: 12px 2px; font-family: var(--mono); font-size: 14px; }
+  .nudge .btn.less { color: #fca5a5; }
+  .nudge .btn.more { color: #86efac; }
+  .nudge-legend {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    margin-top: 6px;
+    letter-spacing: 0.04em;
+  }
+
+  .toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .tgl {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--panel-2);
+    cursor: pointer;
+    font-size: 13px;
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+  }
+  .tgl .led {
+    width: 24px;
+    height: 14px;
+    border-radius: 999px;
+    background: #2a3040;
+    position: relative;
+    flex: none;
+    transition: background-color 120ms ease;
+  }
+  .tgl .led::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--dim);
+    transition: transform 120ms ease, background-color 120ms ease;
+  }
+  .tgl[data-on='true'] .led { background: rgb(34 197 94 / 0.35); }
+  .tgl[data-on='true'] .led::after { transform: translateX(10px); background: var(--running); }
+  .tgl[data-key='blackout'][data-on='true'] { border-color: var(--danger); background: rgb(239 68 68 / 0.14); }
+  .tgl[data-key='blackout'][data-on='true'] .led { background: rgb(239 68 68 / 0.35); }
+  .tgl[data-key='blackout'][data-on='true'] .led::after { background: var(--danger); }
+
+  .keys { font-size: 12px; line-height: 1.9; color: var(--muted); }
+  .keys kbd {
+    font-family: var(--mono);
+    background: #0c0e14;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    padding: 1px 6px;
+    font-size: 11px;
+    color: var(--text);
+  }
+
+  /* --- messages and sharing ---------------------------------------------- */
+
+  .levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+  .lvl { padding: 9px 4px; font-size: 13px; opacity: 0.5; }
+  .lvl[aria-pressed='true'] { opacity: 1; box-shadow: 0 0 0 2px var(--text) inset; }
+  .lvl.info { background: #1d4ed8; border-color: transparent; color: #fff; }
+
+  .hides { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+  .hide-opt { padding: 8px 2px; font-size: 12px; font-family: var(--mono); opacity: 0.55; }
+  .hide-opt[aria-pressed='true'] { opacity: 1; border-color: var(--accent); }
+
+  .send-row { display: grid; grid-template-columns: 2fr 1fr; gap: 6px; margin-top: 8px; }
+
+  .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .presets .btn { padding: 12px 6px; font-size: 13px; }
+  .presets .btn.span { grid-column: 1 / -1; }
+
+  #liveMsg {
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    display: none;
+  }
+  #liveMsg.on { display: block; }
+  #liveMsg[data-level='info'] { background: #1d4ed8; color: #fff; }
+  #liveMsg[data-level='warning'] { background: var(--warning); color: #1a1300; }
+  #liveMsg[data-level='urgent'] { background: var(--danger); color: #fff; }
+
+  .share-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .share-row .name {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    min-width: 78px;
+    flex: none;
+  }
+  .share-row input.field { font-family: var(--mono); font-size: 12px; padding: 7px 9px; }
+  .share-row .btn { flex: none; padding: 7px 10px; font-size: 12px; }
+
+  /* --- phone ------------------------------------------------------------- */
+
+  /* Doc runs this from his pocket when he is away from the desk, so the single
+     column keeps the transport first and every hit target stays thumb sized. */
+  @media (max-width: 900px) {
+    body { overflow: auto; }
+    #app { height: auto; min-height: 100%; }
+    .cols { grid-template-columns: 1fr; }
+    .col { overflow: visible; }
+    #colCentre { order: 1; }
+    #colLeft { order: 2; }
+    #colRight { order: 3; }
+    #timerbox { height: 21vh; min-height: 110px; }
+    .transport .btn { padding: 20px 8px; }
+    .nudge .btn { padding: 16px 2px; }
+    .keys { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Pending change gate. Rendered first in the DOM so it is the first thing seen
+       and the first thing a screen reader reaches. -->
+  <div id="pending" class="card" role="region" aria-label="Pending rundown changes">
+    <div class="pending-head">
+      <span class="tag">PENDING</span>
+      <strong id="pendBy">Producer</strong>
+      <span class="muted" id="pendMeta"></span>
+    </div>
+    <ul class="pending-list" id="pendList"></ul>
+    <div class="pending-actions">
+      <button class="btn warn" id="pendApply">Apply changes</button>
+      <button class="btn ghost" id="pendReject">Dismiss</button>
+      <span class="muted" style="font-size:12px;align-self:center">Nothing changes on the running timer until you apply.</span>
+    </div>
+  </div>
+
+  <div class="topbar card">
+    <h1 id="showTitle">Stage Time</h1>
+    <span class="muted" id="showSub" style="font-size:13px"></span>
+    <span class="spacer"></span>
+    <span class="mono muted" id="wallClock" style="font-size:13px"></span>
+    <span class="conn" id="conn" data-on="false"><span class="dot"></span><span id="connText">CONNECTING</span></span>
+  </div>
+
+  <div class="cols">
+
+    <!-- ---------------- LEFT: rundown ---------------- -->
+    <div class="col" id="colLeft">
+      <div class="card panel">
+        <h2>Rundown</h2>
+        <div id="rows"></div>
+        <div id="rowsEmpty" class="muted" style="display:none;font-size:13px">
+          No sessions loaded. Pick a show file in the share panel.
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------------- CENTRE: transport ---------------- -->
+    <div class="col" id="colCentre">
+      <div class="card panel">
+        <div class="st-timerbox" id="timerbox">
+          <div class="st-digits" id="digits" data-phase="idle" data-running="false">00<span class="colon">:</span>00</div>
+        </div>
+        <div style="margin-top:10px">
+          <div id="nowTitle" class="st-title">No session armed</div>
+          <div id="nowSpeaker" class="muted"></div>
+          <div id="nextLine" class="muted">Next: <b>nothing</b></div>
+        </div>
+      </div>
+
+      <div class="card panel">
+        <h2>Transport</h2>
+        <div class="transport">
+          <button class="btn primary" id="btnToggle">Start</button>
+          <button class="btn" id="btnReset">Reset</button>
+          <button class="btn" id="btnNext">Next</button>
+        </div>
+      </div>
+
+      <div class="card panel">
+        <h2>Nudge the clock</h2>
+        <div class="nudge" id="nudge">
+          <button class="btn less" data-sec="-600">-10m</button>
+          <button class="btn less" data-sec="-300">-5m</button>
+          <button class="btn less" data-sec="-60">-1m</button>
+          <button class="btn more" data-sec="60">+1m</button>
+          <button class="btn more" data-sec="300">+5m</button>
+          <button class="btn more" data-sec="600">+10m</button>
+        </div>
+        <div class="nudge-legend">
+          <span style="color:#fca5a5">&larr; minus takes time AWAY</span>
+          <span style="color:#86efac">plus GIVES more time &rarr;</span>
+        </div>
+      </div>
+
+      <div class="card panel">
+        <h2>Display options</h2>
+        <div class="toggles" id="toggles"></div>
+      </div>
+
+      <div class="card panel">
+        <h2>Keyboard</h2>
+        <div class="keys">
+          <kbd>space</kbd> start / pause &nbsp; <kbd>n</kbd> next session<br>
+          <kbd>r</kbd> reset &nbsp; <kbd>&uarr;</kbd> plus 1m &nbsp; <kbd>&darr;</kbd> minus 1m &nbsp; <kbd>b</kbd> blackout
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------------- RIGHT: messages and sharing ---------------- -->
+    <div class="col" id="colRight">
+      <div class="card panel">
+        <h2>Message to stage</h2>
+        <input class="field" id="msgText" type="text" placeholder="Type a message for the presenter" autocomplete="off">
+        <div class="levels">
+          <button class="btn lvl info" data-level="info" aria-pressed="true">Info</button>
+          <button class="btn lvl warn" data-level="warning" aria-pressed="false">Warning</button>
+          <button class="btn lvl danger" data-level="urgent" aria-pressed="false">Urgent</button>
+        </div>
+        <div class="hides">
+          <button class="btn hide-opt" data-sec="0" aria-pressed="true">stay</button>
+          <button class="btn hide-opt" data-sec="5" aria-pressed="false">5s</button>
+          <button class="btn hide-opt" data-sec="10" aria-pressed="false">10s</button>
+          <button class="btn hide-opt" data-sec="30" aria-pressed="false">30s</button>
+        </div>
+        <div class="send-row">
+          <button class="btn primary" id="btnSend">Send</button>
+          <button class="btn" id="btnClearMsg">Clear</button>
+        </div>
+        <div id="liveMsg"></div>
+      </div>
+
+      <div class="card panel">
+        <h2>Quick send</h2>
+        <div class="presets" id="presets">
+          <button class="btn" data-text="5 minutes left" data-level="info">5 minutes left</button>
+          <button class="btn" data-text="2 minutes" data-level="warning">2 minutes</button>
+          <button class="btn" data-text="WRAP UP" data-level="urgent">WRAP UP</button>
+          <button class="btn" data-text="Time is up" data-level="urgent">Time is up</button>
+          <button class="btn span" data-text="Go to break" data-level="info">Go to break</button>
+        </div>
+      </div>
+
+      <div class="card panel">
+        <h2>Show file</h2>
+        <div class="send-row" style="margin-top:0">
+          <select class="field" id="showPicker"></select>
+          <button class="btn" id="btnLoadShow">Load</button>
+        </div>
+        <div class="muted" id="showMsg" style="font-size:12px;margin-top:6px">
+          Loading a show file resets the timer. Do it between segments.
+        </div>
+      </div>
+
+      <div class="card panel">
+        <h2>Share these links</h2>
+        <div id="shares"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module">
+import * as ST from './st.js';
+
+ST.applyChrome();
+
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+};
+
+// Digits want the colon in its own span so st.css can blink it.
+function digitsHTML(seconds) {
+  const s = ST.fmtClock(seconds);
+  return s.replace(/:/g, '<span class="colon">:</span>');
+}
+
+// ---------------------------------------------------------------------------
+// Local schedule projection.
+//
+// The server ships `state.projection`, but only at broadcast time. Slack against a
+// pinned start decays second by second, so we recompute it here every frame from the
+// same two numbers the countdown uses. Same arithmetic as lib/state.js on purpose.
+// ---------------------------------------------------------------------------
+
+function pinnedToEpoch(hhmm, now) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm ?? '').trim());
+  if (!m) return null;
+  const d = new Date(now);
+  d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  return d.getTime();
+}
+
+function projectNow(state, at) {
+  const out = new Map();
+  const sessions = state?.sessions || [];
+  if (!sessions.length) return out;
+  const activeIdx = sessions.findIndex((s) => s.id === state.timer?.activeSessionId);
+  let cursor = at;
+  if (activeIdx >= 0) cursor = at + Math.max(0, ST.remaining(state, at)) * 1000;
+  const startFrom = activeIdx >= 0 ? activeIdx + 1 : 0;
+  for (let i = startFrom; i < sessions.length; i++) {
+    const s = sessions[i];
+    if (s.done) continue;
+    let slackSeconds = null;
+    if (s.pinnedAt) {
+      const pinned = pinnedToEpoch(s.pinnedAt, at);
+      if (pinned != null) slackSeconds = Math.round((pinned - cursor) / 1000);
+    }
+    out.set(s.id, { projectedStart: cursor, slackSeconds });
+    cursor += (s.duration || 0) * 1000;
+  }
+  return out;
+}
+
+// Same colour logic the rest of the app uses: green means room, amber means under
+// two minutes of room, red means the pin is already blown.
+function slackClass(sec) {
+  if (sec < 0) return 'slack-late';
+  if (sec < 120) return 'slack-tight';
+  return 'slack-ok';
+}
+
+function slackText(sec) {
+  if (sec < 0) return `LATE by ${ST.fmtDuration(-sec)}`;
+  return `${ST.fmtDuration(sec)} slack`;
+}
+
+// ---------------------------------------------------------------------------
+// Rundown list
+//
+// The DOM is rebuilt only when state.revision changes. Everything time dependent
+// lives in cells we keep references to and repaint every frame.
+// ---------------------------------------------------------------------------
+
+let builtRevision = -1;
+let builtSessionCount = -1;
+const projCells = new Map(); // session id -> element showing projected start and slack
+let armingId = null;         // session awaiting an inline confirm
+
+function buildRundown(state) {
+  const host = $('rows');
+  host.textContent = '';
+  projCells.clear();
+
+  const sessions = state?.sessions || [];
+  $('rowsEmpty').style.display = sessions.length ? 'none' : 'block';
+
+  const activeId = state?.timer?.activeSessionId || null;
+  const nextS = ST.nextSession(state);
+
+  sessions.forEach((s, i) => {
+    const row = el('button', 'row');
+    row.type = 'button';
+    row.dataset.id = s.id;
+    row.dataset.live = String(s.id === activeId);
+    row.dataset.next = String(!!nextS && s.id === nextS.id && s.id !== activeId);
+    row.dataset.done = String(!!s.done);
+    row.dataset.arming = String(armingId === s.id);
+
+    const top = el('div', 'row-top');
+    top.append(
+      el('span', 'row-num', String(i + 1).padStart(2, '0')),
+      el('span', 'row-title', s.title || 'Untitled'),
+      el('span', 'row-dur', ST.fmtDuration(s.duration || 0)),
+    );
+    row.append(top);
+
+    const sub = el('div', 'row-sub');
+    if (s.id === activeId) sub.append(el('span', 'pill live', 'live'));
+    else if (nextS && s.id === nextS.id) sub.append(el('span', 'pill next', 'next'));
+    if (s.done) sub.append(el('span', 'pill done', 'done'));
+    if (s.pinnedAt) sub.append(el('span', 'pill pinned', s.pinnedAt));
+    if (s.hard) sub.append(el('span', 'pill hard', 'hard'));
+    if (s.speaker) sub.append(el('span', 'muted', s.speaker));
+
+    const proj = el('span', 'row-proj');
+    sub.append(proj);
+    projCells.set(s.id, proj);
+    row.append(sub);
+
+    // Inline arm confirmation, built once and shown by CSS when armingId matches.
+    const conf = el('div', 'confirm');
+    const warn = el('span', 'warn-text', 'Timer is RUNNING. Arm this anyway?');
+    const yes = el('button', 'btn danger', 'Yes, arm it');
+    yes.type = 'button';
+    const no = el('button', 'btn ghost', 'Cancel');
+    no.type = 'button';
+    yes.addEventListener('click', (e) => {
+      e.stopPropagation();
+      armingId = null;
+      row.dataset.arming = 'false';
+      ST.command('select', { id: s.id });
+    });
+    no.addEventListener('click', (e) => {
+      e.stopPropagation();
+      armingId = null;
+      row.dataset.arming = 'false';
+    });
+    conf.append(warn, yes, no);
+    row.append(conf);
+
+    row.addEventListener('click', () => {
+      const running = !!ST.store.state?.timer?.isRunning;
+      if (!running) {
+        armingId = null;
+        ST.command('select', { id: s.id });
+        return;
+      }
+      // Selecting during a live segment wipes the running clock, so make Doc say so
+      // twice. Inline, because a browser confirm() blanks the console.
+      armingId = armingId === s.id ? null : s.id;
+      for (const r of host.children) r.dataset.arming = String(r.dataset.id === armingId);
+    });
+
+    host.append(row);
+  });
+}
+
+function paintRundown(state, at) {
+  const proj = projectNow(state, at);
+  for (const [id, cell] of projCells) {
+    const p = proj.get(id);
+    if (!p) { cell.textContent = ''; cell.className = 'row-proj'; continue; }
+    const when = ST.fmtTimeOfDay(p.projectedStart);
+    if (p.slackSeconds == null) {
+      cell.className = 'row-proj muted';
+      cell.textContent = `starts ~${when}`;
+    } else {
+      cell.className = `row-proj ${slackClass(p.slackSeconds)}`;
+      cell.textContent = `~${when} · ${slackText(p.slackSeconds)}`;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Display option toggles
+// ---------------------------------------------------------------------------
+
+const TOGGLES = [
+  ['autoAdvance', 'Auto advance'],
+  ['showProgressBar', 'Progress bar'],
+  ['showClock', 'Wall clock'],
+  ['showSessionInfo', 'Session info'],
+  ['showUpNext', 'Up next'],
+  ['blackout', 'BLACKOUT'],
+];
+
+const toggleEls = new Map();
+(function buildToggles() {
+  const host = $('toggles');
+  for (const [key, label] of TOGGLES) {
+    const b = el('button', 'tgl');
+    b.type = 'button';
+    b.dataset.key = key;
+    b.dataset.on = 'false';
+    b.append(el('span', 'led'), el('span', null, label));
+    b.addEventListener('click', () => ST.command('toggleOption', { key }));
+    host.append(b);
+    toggleEls.set(key, b);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Transport
+// ---------------------------------------------------------------------------
+
+$('btnToggle').addEventListener('click', () => ST.command('toggle'));
+$('btnReset').addEventListener('click', () => ST.command('reset'));
+$('btnNext').addEventListener('click', () => ST.command('next'));
+
+for (const b of $('nudge').querySelectorAll('button')) {
+  b.addEventListener('click', () => ST.command('adjust', { seconds: Number(b.dataset.sec) }));
+}
+
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
+
+let msgLevel = 'info';
+let msgSeconds = 0;
+
+function setPressed(list, matchFn) {
+  for (const b of list) b.setAttribute('aria-pressed', String(matchFn(b)));
+}
+
+const levelBtns = [...document.querySelectorAll('.lvl')];
+for (const b of levelBtns) {
+  b.addEventListener('click', () => {
+    msgLevel = b.dataset.level;
+    setPressed(levelBtns, (x) => x.dataset.level === msgLevel);
+  });
+}
+
+const hideBtns = [...document.querySelectorAll('.hide-opt')];
+for (const b of hideBtns) {
+  b.addEventListener('click', () => {
+    msgSeconds = Number(b.dataset.sec);
+    setPressed(hideBtns, (x) => Number(x.dataset.sec) === msgSeconds);
+  });
+}
+
+$('btnSend').addEventListener('click', () => {
+  const text = $('msgText').value.trim();
+  if (!text) return;
+  ST.command('message', { text, level: msgLevel, seconds: msgSeconds });
+});
+
+$('btnClearMsg').addEventListener('click', () => {
+  $('msgText').value = '';
+  ST.command('clearMessage');
+});
+
+$('msgText').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); $('btnSend').click(); }
+});
+
+// Presets fire straight out. These get used far more than typing does, so there is
+// no confirm step: sending the wrong cue card is cheap, sending it late is not.
+for (const b of $('presets').querySelectorAll('button')) {
+  b.addEventListener('click', () => {
+    ST.command('message', { text: b.dataset.text, level: b.dataset.level, seconds: msgSeconds });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Pending gate
+// ---------------------------------------------------------------------------
+
+$('pendApply').addEventListener('click', () => ST.command('acceptPending'));
+$('pendReject').addEventListener('click', () => ST.command('rejectPending'));
+
+let pendingStamp = null; // avoid rebuilding the list on every state push
+
+function paintPending(state) {
+  const p = state?.pending || null;
+  const box = $('pending');
+  if (!p) {
+    box.classList.remove('on');
+    pendingStamp = null;
+    return;
+  }
+  box.classList.add('on');
+  const stamp = `${p.at}:${(p.changes || []).length}`;
+  if (stamp === pendingStamp) return;
+  pendingStamp = stamp;
+
+  $('pendBy').textContent = `${p.by || 'Producer'} submitted rundown changes`;
+  const n = (p.changes || []).length;
+  $('pendMeta').textContent = `${n} change${n === 1 ? '' : 's'} · ${ST.fmtTimeOfDay(p.at)}`;
+
+  const list = $('pendList');
+  list.textContent = '';
+  for (const c of p.changes || []) {
+    const li = el('li', c.guarded ? 'guarded' : '', c.summary || c.kind || 'change');
+    list.append(li);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Share links and show picker
+// ---------------------------------------------------------------------------
+
+const SHARE = [
+  ['Control', '/control'],
+  ['Rundown', '/rundown'],
+  ['Presenter', '/presenter'],
+  ['Public', '/public'],
+  ['Agenda', '/agenda'],
+  ['Ecamm / OBS', '/presenter?transparent=1&chrome=0'],
+];
+
+(function buildShares() {
+  const host = $('shares');
+  for (const [name, route] of SHARE) {
+    const row = el('div', 'share-row');
+    const input = el('input', 'field');
+    input.type = 'text';
+    input.readOnly = true;
+    // Built from location.origin so the link carries whatever host and port the
+    // operator actually reached this page on, LAN IP included.
+    input.value = location.origin + route;
+    const copy = el('button', 'btn', 'Copy');
+    copy.type = 'button';
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(input.value);
+      } catch {
+        // Clipboard API needs a secure context, and a LAN IP over plain http is not
+        // one. Selecting the text keeps the fallback a single keystroke away.
+        input.select();
+        try { document.execCommand('copy'); } catch { /* operator can copy by hand */ }
+      }
+      copy.textContent = 'Copied';
+      setTimeout(() => { copy.textContent = 'Copy'; }, 1200);
+    });
+    row.append(el('span', 'name', name), input, copy);
+    host.append(row);
+  }
+})();
+
+async function loadShowList() {
+  const picker = $('showPicker');
+  try {
+    const r = await fetch('/api/shows', { cache: 'no-store' });
+    const { files = [], current = null } = await r.json();
+    picker.textContent = '';
+    if (!files.length) {
+      const o = el('option', null, 'No show files found');
+      o.value = '';
+      picker.append(o);
+      picker.disabled = true;
+      $('btnLoadShow').disabled = true;
+      return;
+    }
+    picker.disabled = false;
+    $('btnLoadShow').disabled = false;
+    for (const f of files) {
+      const o = el('option', null, f + (f === current ? '  (loaded)' : ''));
+      o.value = f;
+      if (f === current) o.selected = true;
+      picker.append(o);
+    }
+  } catch {
+    picker.textContent = '';
+    const o = el('option', null, 'Server unreachable');
+    o.value = '';
+    picker.append(o);
+    picker.disabled = true;
+  }
+}
+
+$('btnLoadShow').addEventListener('click', async () => {
+  const file = $('showPicker').value;
+  if (!file) return;
+  $('showMsg').textContent = `Loading ${file}...`;
+  try {
+    const r = await fetch('/api/load', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ file }),
+    });
+    const j = await r.json();
+    $('showMsg').textContent = j.ok ? `Loaded ${file}.` : `Could not load: ${j.error || 'unknown error'}`;
+  } catch (e) {
+    $('showMsg').textContent = `Could not load: ${e.message}`;
+  }
+  loadShowList();
+});
+
+loadShowList();
+
+// ---------------------------------------------------------------------------
+// Keyboard shortcuts
+// ---------------------------------------------------------------------------
+
+document.addEventListener('keydown', (e) => {
+  // Never steal a keystroke that belongs to the message box.
+  const t = e.target;
+  const tag = t && t.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+  switch (e.key) {
+    case ' ': e.preventDefault(); ST.command('toggle'); break;
+    case 'n': case 'N': ST.command('next'); break;
+    case 'r': case 'R': ST.command('reset'); break;
+    case 'ArrowUp': e.preventDefault(); ST.command('adjust', { seconds: 60 }); break;
+    case 'ArrowDown': e.preventDefault(); ST.command('adjust', { seconds: -60 }); break;
+    case 'b': case 'B': ST.command('toggleOption', { key: 'blackout' }); break;
+    case 'Escape': // bail out of a half-made arm decision
+      armingId = null;
+      for (const r of $('rows').children) r.dataset.arming = 'false';
+      break;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Render
+// ---------------------------------------------------------------------------
+
+let connected = false;
+
+function onState(state, isConnected) {
+  connected = isConnected;
+  const c = $('conn');
+  c.dataset.on = String(isConnected);
+  $('connText').textContent = isConnected ? 'CONNECTED' : 'OFFLINE';
+
+  if (!state) return;
+
+  $('showTitle').textContent = state.show?.title || 'Stage Time';
+  $('showSub').textContent = state.show?.subtitle || '';
+
+  // A rebuilt list would also drop the arm confirmation the operator is mid-way
+  // through, so we only do it when the revision or the session count actually moves.
+  const sessionCount = state.sessions?.length || 0;
+  if (state.revision !== builtRevision || sessionCount !== builtSessionCount) {
+    builtRevision = state.revision;
+    builtSessionCount = sessionCount;
+    // An arm decision aimed at a session that no longer exists is meaningless.
+    if (armingId && !state.sessions?.some((s) => s.id === armingId)) armingId = null;
+    buildRundown(state);
+  }
+
+  for (const [key, b] of toggleEls) b.dataset.on = String(!!state.timer?.[key]);
+
+  const running = !!state.timer?.isRunning;
+  const btn = $('btnToggle');
+  btn.textContent = running ? 'Pause' : 'Start';
+  btn.className = running ? 'btn warn' : 'btn primary';
+
+  const active = ST.activeSession(state);
+  $('nowTitle').textContent = active ? active.title : 'No session armed';
+  $('nowSpeaker').textContent = active?.speaker || '';
+  const nxt = ST.nextSession(state);
+  $('nextLine').innerHTML = 'Next: <b></b>';
+  $('nextLine').querySelector('b').textContent = nxt ? nxt.title : 'nothing';
+
+  const m = state.message;
+  const box = $('liveMsg');
+  if (m && m.text) {
+    box.classList.add('on');
+    box.dataset.level = m.level || 'info';
+    box.textContent = `On screen: ${m.text}`;
+  } else {
+    box.classList.remove('on');
+  }
+
+  paintPending(state);
+}
+
+ST.store.on(onState);
+ST.connect();
+
+// Everything time dependent repaints on the animation frame, using ST.now() so two
+// machines with different system clocks still agree.
+ST.tick(() => {
+  const state = ST.store.state;
+  const at = ST.now();
+  $('wallClock').textContent = ST.fmtTimeOfDay(at);
+  if (!state) return;
+
+  const active = ST.activeSession(state);
+  const d = $('digits');
+  if (!active) {
+    d.dataset.phase = 'idle';
+    d.dataset.running = 'false';
+    d.innerHTML = digitsHTML(0);
+  } else {
+    const rem = ST.remaining(state, at);
+    d.dataset.phase = ST.phase(state, at);
+    d.dataset.running = String(!!state.timer?.isRunning);
+    d.classList.toggle('wide', Math.abs(rem) >= 3600);
+    d.innerHTML = digitsHTML(rem);
+  }
+
+  paintRundown(state, at);
+});
+</script>
+</body>
+</html>

@@ -13,3 +13,8 @@ Newest first. One line per decision: date, what we decided, why.
 - 2026-09-03 — Zero runtime dependencies, Node stdlib only, no build step for the server. Reason: needing `npm install` at a venue means needing venue internet, which defeats the whole project. Vendor anything essential.
 - 2026-09-03 — No native modules in core; second reason NDI stays an optional separate module.
 - 2026-09-03 — Rundowns are plain JSON files in `shows/`, versioned with the repo. The show file is the document; no export step.
+- 2026-09-03 — Built v0.1: zero-dep Node server, five views, wall-clock pins with live slack, producer gate, 15 smoke tests. Real Dallas rundowns in `shows/`.
+- 2026-09-03 — Push over SSE, not polling. EventTimer's demo polls; SSE is lighter, instant, and still stdlib-only.
+- 2026-09-03 — `ST.tick()` pairs requestAnimationFrame with a 250ms interval, because browsers throttle rAF to zero in a hidden window and a backgrounded presenter view would otherwise freeze on a stale number mid-show.
+- 2026-09-03 — The progress bar survives `transparent=1` and only disappears under `chrome=0`. On an Ecamm overlay the colour bar is usually the point.
+- 2026-09-03 — Applying a pending change writes the show JSON back to disk. The file is the document, so the file is what gets updated.

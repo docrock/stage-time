@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stage Time - Presenter</title>
+<link rel="stylesheet" href="./st.css">
+<style>
+  /* View-specific layout only. Anything reusable lives in st.css. */
+
+  /* The digits already size themselves from the container. ?scale= just multiplies
+     that, so a small Ecamm widget box can be pushed bigger without a resize listener. */
+  .st-digits { font-size: calc(min(34cqw, 84cqh) * var(--st-scale, 1)); }
+  .st-digits.wide { font-size: calc(min(23cqw, 70cqh) * var(--st-scale, 1)); }
+
+  /* Session title hard left, wall clock hard right. */
+  .st-top { justify-content: space-between; }
+  .st-top .slot { min-width: 0; }
+  .st-top .st-title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* Idle: no session selected. A calm standby card, never a fake 00:00. */
+  .st-idle {
+    text-align: center;
+    padding: 0 6cqw;
+  }
+  .st-idle .show-title {
+    font-size: min(7cqw, 16cqh);
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--text);
+  }
+  .st-idle .standby {
+    margin-top: 2cqh;
+    font-size: min(3.4cqw, 8cqh);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  /* Blackout rests the screen. It must not swallow a cue, so while it is up the
+     operator's message is re-parented visually on top of it. */
+  .st-message.over-blackout {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 100;
+  }
+
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="st-stage">
+
+  <div class="st-top st-chrome" id="topStrip">
+    <div class="slot st-title" id="sessionTitle"></div>
+    <div class="slot st-clock" id="wallClock"></div>
+  </div>
+
+  <!-- Deliberately NOT .st-chrome: an operator cue outranks chrome=0. -->
+  <div class="st-message" id="message" data-level="info" hidden></div>
+
+  <div class="st-timerbox">
+    <div class="st-digits" id="digits" data-phase="idle" data-running="false"></div>
+    <div class="st-idle" id="idle" hidden>
+      <div class="show-title" id="idleShow"></div>
+      <div class="standby">Standing by</div>
+    </div>
+  </div>
+
+  <div class="st-bottom st-chrome" id="upNextStrip">
+    <div class="st-upnext">
+      <span class="st-label">Up next</span>
+      <b id="nextTitle"></b>
+    </div>
+  </div>
+
+  <div class="st-progress" id="progress" data-phase="idle"><i id="progressFill"></i></div>
+</div>
+
+<div class="st-blackout" id="blackout" hidden></div>
+<div class="st-offline" id="offline" hidden>OFFLINE</div>
+
+<script type="module">
+import * as ST from './st.js';
+
+// transparent / chrome / flip, before the first paint so nothing flashes.
+ST.applyChrome();
+
+// --- URL parameters -------------------------------------------------------
+// Each of these is ANDed with the matching operator toggle further down: the
+// display can only show something both the URL and the operator allow.
+const wantClock    = ST.opt('clock', true) !== false;
+const wantUpNext   = ST.opt('upnext', true) !== false;
+const wantProgress = ST.opt('progress', true) !== false;
+const wantTitle    = ST.opt('title', true) !== false;
+const transparent  = ST.opt('transparent', false) === true;
+
+const rawScale = Number(ST.opt('scale', 1));
+const scale = Number.isFinite(rawScale) && rawScale > 0 ? rawScale : 1;
+document.documentElement.style.setProperty('--st-scale', scale);
+
+const el = {
+  top: document.getElementById('topStrip'),
+  sessionTitle: document.getElementById('sessionTitle'),
+  wallClock: document.getElementById('wallClock'),
+  message: document.getElementById('message'),
+  digits: document.getElementById('digits'),
+  idle: document.getElementById('idle'),
+  idleShow: document.getElementById('idleShow'),
+  upNextStrip: document.getElementById('upNextStrip'),
+  nextTitle: document.getElementById('nextTitle'),
+  progress: document.getElementById('progress'),
+  progressFill: document.getElementById('progressFill'),
+  blackout: document.getElementById('blackout'),
+  offline: document.getElementById('offline'),
+};
+
+// --- tiny DOM helpers -----------------------------------------------------
+// The render loop runs every animation frame, so every write is guarded by a
+// cache. Touching the DOM only when a value actually changed keeps the paint
+// cheap enough to survive on an old laptop driving the stage monitor.
+const last = new Map();
+function set(key, value, apply) {
+  if (last.get(key) === value) return;
+  last.set(key, value);
+  apply(value);
+}
+const text = (node, key) => (v) => set(key, v, (x) => { node.textContent = x; });
+const show = (node, key) => (v) => set(key, v, (x) => { node.hidden = !x; });
+const attr = (node, name, key) => (v) => set(key, v, (x) => { node.setAttribute(name, x); });
+
+// Digits need the colon in its own element so st.css can blink it.
+function paintDigits(str) {
+  set('digits', str, (s) => {
+    el.digits.innerHTML = s.split(':').join('<span class="colon">:</span>');
+    // Long readouts (hours, or a time of day with AM/PM) need the narrower ramp
+    // or they run off the sides of a wide box.
+    el.digits.classList.toggle('wide', s.length > 5);
+  });
+}
+
+// --- phase ----------------------------------------------------------------
+// ST.phase() is countdown maths: anything at or below zero is 'over'. A count-up
+// timer starts at zero, so asking ST.phase() about one would paint it red from
+// the first second. Derive the phase from the session's own budget instead.
+function phaseFor(state, session, mode) {
+  if (mode === 'clock') return 'running';          // a wall clock has no wrap-up
+  if (mode !== 'countup') return ST.phase(state);
+
+  const budget = session?.duration || 0;
+  if (!budget) return 'running';                   // open-ended segment, never scold
+  const left = budget - elapsedOf(state);
+  if (left <= 0) return 'over';
+  if (left <= (session.wrapUp?.red ?? 30)) return 'danger';
+  if (left <= (session.wrapUp?.yellow ?? 120)) return 'warning';
+  return 'running';
+}
+
+// Count-up sessions are seeded with remainingAtStart = 0, so ST.remaining()
+// walks negative. Elapsed is simply the mirror of it.
+function elapsedOf(state) {
+  return -ST.remaining(state);
+}
+
+// --- render ---------------------------------------------------------------
+function render() {
+  const state = ST.store.state;
+  const connected = ST.store.connected;
+
+  // Never lands on the program feed: an overlay must not key a red badge over the show.
+  el.offline.hidden = transparent || connected;
+
+  // First paint can happen before any state arrives, and before the cache loads.
+  if (!state) {
+    paintDigits('--:--');
+    attr(el.digits, 'data-phase', 'digitsPhase')('idle');
+    show(el.idle, 'idleShown')(false);
+    show(el.digits, 'digitsShown')(true);
+    return;
+  }
+
+  const timer = state.timer || {};
+  const session = ST.activeSession(state);
+  const next = ST.nextSession(state);
+  const mode = timer.mode || session?.mode || 'countdown';
+  const nowMs = ST.now();
+
+  // --- the countdown, the whole point of this screen ---------------------
+  const idle = !session;
+  show(el.idle, 'idleShown')(idle);
+  show(el.digits, 'digitsShown')(!idle);
+
+  let phase = 'idle';
+  let fraction = 0;
+
+  if (idle) {
+    // A calm standby state. No zeros, nothing that reads as a live cue.
+    text(el.idleShow, 'idleShow')(state.show?.title || 'Stage Time');
+  } else if (mode === 'clock') {
+    paintDigits(ST.fmtTimeOfDay(nowMs));
+    phase = 'running';
+  } else if (mode === 'countup') {
+    const elapsed = Math.max(0, elapsedOf(state));
+    paintDigits(ST.fmtClock(elapsed));
+    phase = phaseFor(state, session, mode);
+    fraction = session?.duration ? elapsed / session.duration : 0;
+  } else {
+    // fmtClock already renders overrun as -MM:SS, and the 'over' phase turns it
+    // red. Overrun is information the speaker needs, so we keep counting.
+    const rem = ST.remaining(state, nowMs);
+    paintDigits(ST.fmtClock(rem));
+    phase = phaseFor(state, session, mode);
+    fraction = session?.duration ? (session.duration - rem) / session.duration : 0;
+  }
+
+  attr(el.digits, 'data-phase', 'digitsPhase')(phase);
+  attr(el.digits, 'data-running', 'digitsRunning')(String(Boolean(timer.isRunning)));
+
+  // --- top strip ---------------------------------------------------------
+  const titleOn = wantTitle && timer.showSessionInfo !== false && !idle;
+  show(el.sessionTitle, 'titleShown')(titleOn);
+  if (titleOn) {
+    text(el.sessionTitle, 'titleText')(session.title || '');
+    // Each session carries its own colour so the speaker can tell blocks apart
+    // at a glance from the back of a room.
+    set('titleColor', session.color || 'var(--accent)', (c) => { el.sessionTitle.style.color = c; });
+  }
+
+  const clockOn = wantClock && timer.showClock !== false;
+  show(el.wallClock, 'clockShown')(clockOn);
+  if (clockOn) text(el.wallClock, 'clockText')(ST.fmtTimeOfDay(nowMs));
+
+  // Nothing left in the strip means no reason to reserve its height.
+  show(el.top, 'topShown')(titleOn || clockOn);
+
+  // --- up next -----------------------------------------------------------
+  const upNextOn = wantUpNext && timer.showUpNext !== false && Boolean(next);
+  show(el.upNextStrip, 'upNextShown')(upNextOn);
+  if (upNextOn) text(el.nextTitle, 'nextText')(next.title || '');
+
+  // --- progress ----------------------------------------------------------
+  const progressOn = wantProgress && timer.showProgressBar !== false && !idle && mode !== 'clock';
+  show(el.progress, 'progressShown')(progressOn);
+  if (progressOn) {
+    const pct = Math.max(0, Math.min(1, fraction)) * 100;
+    // Round to whole percent: sub-pixel width churn every frame buys nothing.
+    set('progressWidth', Math.round(pct), (p) => { el.progressFill.style.width = p + '%'; });
+    attr(el.progress, 'data-phase', 'progressPhase')(phase);
+  }
+
+  // --- operator message --------------------------------------------------
+  const msg = state.message;
+  const live = msg && msg.text && (!msg.expiresAt || nowMs < msg.expiresAt);
+  show(el.message, 'msgShown')(Boolean(live));
+  if (live) {
+    text(el.message, 'msgText')(msg.text);
+    attr(el.message, 'data-level', 'msgLevel')(msg.level || 'info');
+  }
+
+  // --- blackout ----------------------------------------------------------
+  const dark = Boolean(timer.blackout);
+  show(el.blackout, 'blackoutShown')(dark);
+  // Blackout is for resting the screen between segments, not for hiding a cue,
+  // so a live message floats above it.
+  set('msgOverBlackout', dark && live, (on) => { el.message.classList.toggle('over-blackout', on); });
+}
+
+ST.connect();
+ST.tick(render);
+</script>
+</body>
+</html>

@@ -1,0 +1,1093 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rundown · Stage Time</title>
+<link rel="stylesheet" href="./st.css" />
+<style>
+  /* View-specific styling only. Everything generic comes from st.css. */
+
+  body { overflow-y: auto; }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 16px 16px 160px;
+  }
+
+  /* --- header -------------------------------------------------------- */
+
+  header.bar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: linear-gradient(var(--bg) 78%, rgb(8 9 12 / 0));
+    padding: 14px 0 12px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+  }
+  header.bar h1 {
+    margin: 0;
+    font-size: 20px;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+  header.bar .showname { font-size: 12px; }
+  .spacer { flex: 1 1 auto; }
+  .who {
+    width: 150px;
+    padding: 7px 10px;
+    font-size: 13px;
+  }
+
+  /* Save state is the single most important readout on this page, so it gets
+     its own colour rather than living inside the button label. */
+  .savestate { font-size: 12px; font-weight: 600; }
+  .savestate[data-dirty='true'] { color: var(--warning); }
+  .savestate[data-dirty='false'] { color: var(--dim); }
+
+  /* --- totals -------------------------------------------------------- */
+
+  .totals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .totals .box {
+    flex: 1 1 170px;
+    padding: 10px 13px;
+  }
+  .totals .k {
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .totals .v { font-size: 21px; font-weight: 700; margin-top: 2px; }
+
+  /* --- banners ------------------------------------------------------- */
+
+  .banner {
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .banner b { display: block; font-size: 15px; }
+  .banner.pending {
+    background: rgb(245 182 10 / 0.12);
+    border: 1px solid rgb(245 182 10 / 0.5);
+    color: #f8d67a;
+  }
+  .banner.stale {
+    background: rgb(99 102 241 / 0.14);
+    border: 1px solid rgb(99 102 241 / 0.55);
+    color: #c7cbff;
+  }
+  .banner.trouble {
+    background: rgb(239 68 68 / 0.14);
+    border: 1px solid rgb(239 68 68 / 0.5);
+    color: #fca5a5;
+  }
+  .banner.ok {
+    background: rgb(34 197 94 / 0.12);
+    border: 1px solid rgb(34 197 94 / 0.45);
+    color: #86efac;
+  }
+  .banner .grow { flex: 1 1 260px; }
+
+  /* --- session rows -------------------------------------------------- */
+
+  .rows { display: flex; flex-direction: column; gap: 10px; }
+
+  .row {
+    position: relative;
+    padding: 10px 12px 12px;
+    border-left: 4px solid var(--line);
+  }
+  .row.guarded { border-left-color: var(--warning); }
+  .row.done { opacity: 0.62; }
+  .row.dragover { outline: 2px dashed var(--accent); outline-offset: 2px; }
+  .row.dragging { opacity: 0.4; }
+
+  .rowtop {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .handle {
+    cursor: grab;
+    color: var(--dim);
+    font-size: 15px;
+    line-height: 1;
+    padding: 4px 3px;
+    user-select: none;
+  }
+  .handle:active { cursor: grabbing; }
+  .num {
+    font-size: 12px;
+    min-width: 20px;
+    color: var(--dim);
+  }
+  .swatch {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .rowtop .title { flex: 1 1 220px; font-weight: 600; }
+  .mini {
+    padding: 6px 9px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1.4fr 0.7fr 0.8fr 0.8fr auto;
+    gap: 8px;
+    align-items: center;
+  }
+  .grid label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 3px;
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    white-space: nowrap;
+    padding-top: 14px;
+  }
+  .check input { width: 16px; height: 16px; accent-color: var(--danger); }
+
+  .notes { margin-top: 8px; }
+  .notes textarea { min-height: 42px; resize: vertical; font-size: 13px; }
+
+  .guardnote {
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #f8d67a;
+    background: rgb(245 182 10 / 0.09);
+    border-radius: 8px;
+    padding: 7px 9px;
+  }
+
+  .rowmeta { font-size: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  /* --- footer bar ---------------------------------------------------- */
+
+  .footbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    padding: 10px 16px;
+  }
+  .footbar .inner {
+    max-width: 1080px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  /* --- undo toast ---------------------------------------------------- */
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 74px;
+    transform: translateX(-50%);
+    z-index: 60;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 8px 10px 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    box-shadow: 0 10px 34px rgb(0 0 0 / 0.55);
+    max-width: calc(100vw - 24px);
+  }
+
+  /* --- preview sheet ------------------------------------------------- */
+
+  .sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    background: rgb(0 0 0 / 0.66);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .sheet .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    width: 100%;
+    max-width: 620px;
+    max-height: 86vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .sheet h2 { margin: 0; font-size: 17px; }
+  .sheet .head, .sheet .foot { padding: 14px 16px; }
+  .sheet .foot { border-top: 1px solid var(--line); display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+  .sheet .body { overflow: auto; padding: 0 16px 8px; }
+  .sheet ul { list-style: none; margin: 6px 0 16px; padding: 0; }
+  .sheet li {
+    padding: 7px 10px;
+    border-radius: 8px;
+    background: var(--panel-2);
+    margin-bottom: 6px;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .sheet li.g { border-left: 3px solid var(--warning); }
+  .sheet li.a { border-left: 3px solid var(--running); }
+  .sheet .grouphead { font-size: 13px; font-weight: 700; margin-top: 4px; }
+
+  .hidden { display: none !important; }
+
+  .empty { padding: 34px 18px; text-align: center; }
+
+  /* Narrow screens: the field grid stacks rather than squeezing to nothing. */
+  @media (max-width: 720px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+    .check { padding-top: 4px; grid-column: 1 / -1; }
+    .totals .box { flex-basis: 100%; }
+    .who { width: 120px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="offline" class="st-offline hidden">OFFLINE</div>
+
+<div class="wrap">
+  <header class="bar">
+    <div>
+      <h1>Rundown</h1>
+      <div class="showname muted" id="showname">Loading</div>
+    </div>
+    <div class="spacer"></div>
+    <input id="who" class="field who" placeholder="Your name" aria-label="Your name" />
+    <div class="savestate" id="savestate" data-dirty="false">Saved</div>
+    <button class="btn primary" id="saveTop">Save</button>
+  </header>
+
+  <div id="banners"></div>
+
+  <div class="totals">
+    <div class="card box">
+      <div class="k">Planned total</div>
+      <div class="v mono" id="totPlanned">0m</div>
+    </div>
+    <div class="card box">
+      <div class="k">Remaining to run</div>
+      <div class="v mono" id="totRemaining">0m</div>
+    </div>
+    <div class="card box">
+      <div class="k">Projected end</div>
+      <div class="v mono" id="totEnd">--</div>
+    </div>
+    <div class="card box">
+      <div class="k">Sessions</div>
+      <div class="v mono" id="totCount">0</div>
+    </div>
+  </div>
+
+  <div class="rows" id="rows"></div>
+
+  <div class="card empty hidden" id="empty">
+    <div style="font-size:16px;font-weight:600;margin-bottom:4px">No sessions yet</div>
+    <div class="muted" style="margin-bottom:14px">This rundown is empty. Add the first session to get going.</div>
+    <button class="btn primary" id="addFirst">Add the first session</button>
+  </div>
+</div>
+
+<div class="footbar">
+  <div class="inner">
+    <button class="btn" id="addBtn">+ Add session</button>
+    <button class="btn ghost" id="revertBtn">Discard my edits</button>
+    <div class="spacer"></div>
+    <div class="muted" id="footnote" style="font-size:12px"></div>
+    <button class="btn primary" id="saveBtn">Save rundown</button>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast">
+  <span id="toastText"></span>
+  <button class="btn mini" id="toastUndo">Undo</button>
+</div>
+
+<div class="sheet hidden" id="sheet">
+  <div class="panel">
+    <div class="head">
+      <h2 id="sheetTitle">Before you save</h2>
+      <div class="muted" style="font-size:13px;margin-top:4px" id="sheetSub"></div>
+    </div>
+    <div class="body" id="sheetBody"></div>
+    <div class="foot">
+      <button class="btn ghost" id="sheetCancel">Keep editing</button>
+      <button class="btn primary" id="sheetConfirm">Send to the show</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as ST from './st.js';
+
+ST.applyChrome();
+
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+};
+const uid = () => Math.random().toString(16).slice(2, 10);
+
+// Forgiving duration parsing. Marielou types whatever is in her head: "6m",
+// "90s", "1m 30s", "1:30", or a bare "6" meaning six minutes. Anything we cannot
+// read at all keeps the previous value rather than silently becoming zero.
+function parseDuration(text, fallback) {
+  const raw = String(text ?? '').trim().toLowerCase();
+  if (!raw) return fallback;
+
+  // "1:30" reads as minutes:seconds, the way a stopwatch shows it.
+  const colon = /^(\d+):([0-5]?\d)$/.exec(raw);
+  if (colon) return Number(colon[1]) * 60 + Number(colon[2]);
+
+  let total = 0;
+  let matched = false;
+  const unit = /(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds)/g;
+  let m;
+  while ((m = unit.exec(raw))) {
+    matched = true;
+    const n = Number(m[1]);
+    const u = m[2][0];
+    total += u === 'h' ? n * 3600 : u === 'm' ? n * 60 : n;
+  }
+  if (matched) return Math.max(0, Math.round(total));
+
+  // A bare number is minutes. That is what a rundown is written in.
+  const bare = Number(raw);
+  if (Number.isFinite(bare)) return Math.max(0, Math.round(bare * 60));
+
+  return fallback;
+}
+
+// "12:20", "1220", "12.20" all become "12:20". Empty means no pin.
+function parsePinned(text) {
+  const raw = String(text ?? '').trim();
+  if (!raw) return null;
+  const m = /^(\d{1,2})[:.\s]?(\d{2})$/.exec(raw);
+  if (!m) return null;
+  const h = Math.min(23, Number(m[1]));
+  const mi = Math.min(59, Number(m[2]));
+  return `${h}:${String(mi).padStart(2, '0')}`;
+}
+
+// ---------------------------------------------------------------------------
+// The working copy
+//
+// This page never edits server state directly. It holds its own list, and the
+// only moment the two meet is Save. That is what makes it safe to keep typing
+// while the show runs underneath.
+// ---------------------------------------------------------------------------
+
+let serverState = null;      // latest state from the stream, read-only here
+let connected = false;
+let working = [];            // her editable list
+let baseline = '';           // JSON of the server sessions this copy was built from
+let dirty = false;
+let staleNotice = false;     // server moved while she had unsaved work
+let lastResult = null;       // { applied, pending, at } from the most recent save
+let saving = false;
+
+// Normalise the same way the server's makeSession does, so the change preview
+// on this page matches the diff the server will compute. If these drift, she is
+// told one thing and Doc is shown another.
+function normalise(input = {}) {
+  return {
+    id: input.id || uid(),
+    title: input.title || 'Untitled',
+    speaker: input.speaker || '',
+    notes: input.notes || '',
+    duration: Number.isFinite(input.duration) ? input.duration : 300,
+    mode: input.mode || 'countdown',
+    color: input.color || '#6366f1',
+    pinnedAt: input.pinnedAt || null,
+    hard: Boolean(input.hard),
+    wrapUp: { yellow: 120, red: 30, ...(input.wrapUp || {}) },
+    done: Boolean(input.done),
+    actualDuration: Number.isFinite(input.actualDuration) ? input.actualDuration : null,
+  };
+}
+
+function adoptFromServer(sessions) {
+  working = (sessions || []).map(normalise);
+  baseline = JSON.stringify(working);
+  dirty = false;
+  staleNotice = false;
+}
+
+function markDirty() {
+  dirty = JSON.stringify(working) !== baseline;
+  refreshChrome();
+}
+
+// ---------------------------------------------------------------------------
+// Guard logic, mirrored from lib/diff.js
+//
+// Duplicated on purpose: lib/ is server-side and is not served to the browser,
+// and this page must be able to show the split before it asks the server.
+// ---------------------------------------------------------------------------
+
+const FIELDS = ['title', 'speaker', 'notes', 'duration', 'mode', 'color', 'pinnedAt', 'hard'];
+const LABELS = {
+  title: 'title', speaker: 'speaker', notes: 'notes', duration: 'duration',
+  mode: 'timer mode', color: 'colour', pinnedAt: 'pinned start', hard: 'hard constraint',
+};
+
+function fmtField(field, value) {
+  if (value === null || value === undefined || value === '') return '(empty)';
+  if (field === 'duration') return ST.fmtDuration(value);
+  if (field === 'hard') return value ? 'yes' : 'no';
+  return String(value);
+}
+
+function guardedIds() {
+  const ids = new Set();
+  if (!serverState?.sessions?.length) return ids;
+  const list = serverState.sessions;
+  const i = list.findIndex((s) => s.id === serverState.timer?.activeSessionId);
+  if (i >= 0) {
+    ids.add(list[i].id);
+    if (list[i + 1]) ids.add(list[i + 1].id);
+  } else {
+    const firstUndone = list.find((s) => !s.done);
+    if (firstUndone) ids.add(firstUndone.id);
+  }
+  return ids;
+}
+
+function computeChanges() {
+  const current = serverState?.sessions || [];
+  const proposed = working;
+  const prot = guardedIds();
+  const curById = new Map(current.map((s) => [s.id, s]));
+  const propIds = new Set(proposed.map((s) => s.id));
+  const changes = [];
+
+  for (const p of proposed) {
+    const c = curById.get(p.id);
+    if (!c) {
+      changes.push({ summary: `Added "${p.title}"`, guarded: false });
+      continue;
+    }
+    for (const f of FIELDS) {
+      if (JSON.stringify(c[f]) !== JSON.stringify(p[f])) {
+        changes.push({
+          summary: `"${c.title}" ${LABELS[f]}: ${fmtField(f, c[f])} to ${fmtField(f, p[f])}`,
+          guarded: prot.has(p.id),
+        });
+      }
+    }
+  }
+  for (const c of current) {
+    if (!propIds.has(c.id)) {
+      changes.push({ summary: `Removed "${c.title}"`, guarded: prot.has(c.id) });
+    }
+  }
+
+  const curOrder = current.map((s) => s.id).join(',');
+  const propOrder = proposed.map((s) => s.id).filter((id) => curById.has(id)).join(',');
+  if (curOrder !== propOrder) {
+    // The server guards any reorder while anything is protected at all, because
+    // moving a far-away item can still change what runs next. Match that exactly.
+    changes.push({ summary: 'Rundown order changed', guarded: prot.size > 0 });
+  }
+  return changes;
+}
+
+// ---------------------------------------------------------------------------
+// Totals
+// ---------------------------------------------------------------------------
+
+function refreshTotals() {
+  const planned = working.reduce((a, s) => a + (s.duration || 0), 0);
+  const notDone = working.filter((s) => !s.done);
+  let remainingSecs = notDone.reduce((a, s) => a + (s.duration || 0), 0);
+
+  // If something is live, its remaining time replaces its planned time so the
+  // projected end reflects the show as it is actually running.
+  const active = serverState ? ST.activeSession(serverState) : null;
+  if (active && working.some((s) => s.id === active.id)) {
+    const live = working.find((s) => s.id === active.id);
+    remainingSecs = remainingSecs - (live.duration || 0) + Math.max(0, ST.remaining(serverState));
+  }
+
+  $('totPlanned').textContent = planned ? ST.fmtDuration(planned) : '0m';
+  $('totRemaining').textContent = remainingSecs > 0 ? ST.fmtDuration(Math.round(remainingSecs)) : '0m';
+  $('totEnd').textContent = working.length ? ST.fmtTimeOfDay(ST.now() + remainingSecs * 1000) : '--';
+  $('totCount').textContent = String(working.length);
+}
+
+// ---------------------------------------------------------------------------
+// Banners
+// ---------------------------------------------------------------------------
+
+function banner(kind, title, body, actions = []) {
+  const n = el('div', `banner ${kind}`);
+  const g = el('div', 'grow');
+  g.appendChild(el('b', null, title));
+  if (body) g.appendChild(el('div', null, body));
+  n.appendChild(g);
+  for (const a of actions) {
+    const b = el('button', 'btn mini', a.label);
+    b.addEventListener('click', a.onClick);
+    n.appendChild(b);
+  }
+  return n;
+}
+
+function refreshBanners() {
+  const box = $('banners');
+  box.textContent = '';
+
+  if (staleNotice) {
+    box.appendChild(banner(
+      'stale',
+      'The rundown changed underneath you',
+      'Someone else changed the running order while you have unsaved edits. Your edits are untouched. Reload only when you are ready to lose them, or save first and let the server sort it out.',
+      [{ label: 'Reload from server', onClick: reloadFromServer }],
+    ));
+  }
+
+  if (serverState?.pending) {
+    const p = serverState.pending;
+    const n = p.changes?.length || 0;
+    box.appendChild(banner(
+      'pending',
+      `Waiting for the TD: ${n} change${n === 1 ? '' : 's'} from ${p.by || 'Producer'}`,
+      'A previous batch has not been applied yet. Anything you save now replaces that batch, so check with Doc before stacking another one on top.',
+    ));
+  }
+
+  if (lastResult) {
+    const { applied, pending } = lastResult;
+    const parts = [];
+    parts.push(`${applied} change${applied === 1 ? '' : 's'} applied.`);
+    if (pending) parts.push(`${pending} change${pending === 1 ? '' : 's'} waiting for Doc to apply.`);
+    box.appendChild(banner(
+      pending ? 'pending' : 'ok',
+      pending ? 'Sent, partly waiting' : 'Saved',
+      parts.join(' '),
+      [{ label: 'Dismiss', onClick: () => { lastResult = null; refreshBanners(); } }],
+    ));
+  }
+
+  if (!connected) {
+    box.appendChild(banner(
+      'trouble',
+      'No connection to the show server',
+      'You can keep editing, but nothing can be sent until the connection is back. Check the network and the server Mac.',
+    ));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Row rendering
+//
+// Rows are rebuilt only on structural changes (add, delete, reorder, reload).
+// Typing into a field updates the model in place and never re-renders that row,
+// because re-rendering under a cursor loses the caret and the half-typed word.
+// ---------------------------------------------------------------------------
+
+let dragId = null;
+
+function rowNode(s, index) {
+  const prot = guardedIds();
+  const isGuarded = prot.has(s.id);
+  const isLive = serverState?.timer?.activeSessionId === s.id;
+
+  const row = el('div', 'card row');
+  row.dataset.id = s.id;
+  if (isGuarded) row.classList.add('guarded');
+  if (s.done) row.classList.add('done');
+
+  // --- top line ---
+  const top = el('div', 'rowtop');
+
+  const handle = el('span', 'handle', '☰');
+  handle.title = 'Drag to reorder';
+  handle.setAttribute('aria-hidden', 'true');
+  top.appendChild(handle);
+
+  top.appendChild(el('span', 'num mono', String(index + 1)));
+
+  const colour = el('input', 'swatch');
+  colour.type = 'color';
+  colour.value = s.color || '#6366f1';
+  colour.title = 'Session colour';
+  colour.addEventListener('input', () => { s.color = colour.value; markDirty(); });
+  top.appendChild(colour);
+
+  const title = el('input', 'field title');
+  title.value = s.title;
+  title.placeholder = 'Session title';
+  title.setAttribute('aria-label', 'Title');
+  title.addEventListener('input', () => { s.title = title.value; markDirty(); });
+  top.appendChild(title);
+
+  if (isLive) top.appendChild(el('span', 'pill live', 'LIVE'));
+  else if (isGuarded) top.appendChild(el('span', 'pill next', 'NEXT'));
+  if (s.done) top.appendChild(el('span', 'pill done', 'DONE'));
+
+  const up = el('button', 'btn mini', '↑');
+  up.title = 'Move up';
+  up.disabled = index === 0;
+  up.addEventListener('click', () => move(index, index - 1));
+  const down = el('button', 'btn mini', '↓');
+  down.title = 'Move down';
+  down.disabled = index === working.length - 1;
+  down.addEventListener('click', () => move(index, index + 1));
+  const dup = el('button', 'btn mini', 'Duplicate');
+  dup.addEventListener('click', () => duplicate(index));
+  const del = el('button', 'btn mini danger', 'Delete');
+  del.addEventListener('click', () => remove(index));
+  top.append(up, down, dup, del);
+
+  row.appendChild(top);
+
+  // --- field grid ---
+  const grid = el('div', 'grid');
+
+  const speakerCell = el('div');
+  speakerCell.appendChild(el('label', null, 'Speaker'));
+  const speaker = el('input', 'field');
+  speaker.value = s.speaker;
+  speaker.placeholder = 'Who is on';
+  speaker.addEventListener('input', () => { s.speaker = speaker.value; markDirty(); });
+  speakerCell.appendChild(speaker);
+  grid.appendChild(speakerCell);
+
+  const durCell = el('div');
+  durCell.appendChild(el('label', null, 'Duration'));
+  const dur = el('input', 'field mono');
+  dur.value = ST.fmtDuration(s.duration);
+  dur.placeholder = '6m';
+  dur.title = 'Type 6m, 90s, 1m 30s, 1:30, or just 6 for six minutes';
+  // Parse on blur, not on every keystroke, so "1m 3" does not briefly become 63s
+  // and rewrite what she is halfway through typing.
+  dur.addEventListener('change', () => {
+    s.duration = parseDuration(dur.value, s.duration);
+    dur.value = ST.fmtDuration(s.duration);
+    markDirty();
+    refreshTotals();
+  });
+  durCell.appendChild(dur);
+  grid.appendChild(durCell);
+
+  const modeCell = el('div');
+  modeCell.appendChild(el('label', null, 'Mode'));
+  const mode = el('select', 'field');
+  for (const m of ['countdown', 'countup', 'clock']) {
+    const o = el('option', null, m);
+    o.value = m;
+    mode.appendChild(o);
+  }
+  mode.value = s.mode;
+  mode.addEventListener('change', () => { s.mode = mode.value; markDirty(); });
+  modeCell.appendChild(mode);
+  grid.appendChild(modeCell);
+
+  const pinCell = el('div');
+  pinCell.appendChild(el('label', null, 'Pinned start'));
+  const pin = el('input', 'field mono');
+  pin.value = s.pinnedAt || '';
+  pin.placeholder = '12:20';
+  pin.title = 'Wall clock start time. Leave empty for no pin.';
+  pin.addEventListener('change', () => {
+    s.pinnedAt = parsePinned(pin.value);
+    pin.value = s.pinnedAt || '';
+    markDirty();
+  });
+  pinCell.appendChild(pin);
+  grid.appendChild(pinCell);
+
+  const hardCell = el('label', 'check');
+  const hard = el('input');
+  hard.type = 'checkbox';
+  hard.checked = s.hard;
+  hard.addEventListener('change', () => { s.hard = hard.checked; markDirty(); });
+  hardCell.append(hard, el('span', null, 'Hard'));
+  hardCell.title = 'Hard means this cannot slip. The talent leaves for another commitment.';
+  grid.appendChild(hardCell);
+
+  row.appendChild(grid);
+
+  // --- notes ---
+  const notes = el('div', 'notes');
+  notes.appendChild(el('label', null, 'Notes'));
+  const ta = el('textarea', 'field');
+  ta.value = s.notes;
+  ta.placeholder = 'Anything the TD or the stage needs to know';
+  ta.addEventListener('input', () => { s.notes = ta.value; markDirty(); });
+  notes.appendChild(ta);
+  row.appendChild(notes);
+
+  // --- guard explanation, in her words not the server's ---
+  if (isGuarded) {
+    row.appendChild(el('div', 'guardnote',
+      isLive
+        ? 'GUARDED: this session is on air. Edit it freely, but the change will not take effect until the TD applies it.'
+        : 'GUARDED: this is the next session up. Edit it freely, but the change waits for the TD to apply it.'));
+  }
+
+  // --- drag and drop ---
+  // Only the handle starts a drag, so a click into a text field never picks the
+  // whole row up. Up and down buttons above are the dependable path.
+  handle.draggable = true;
+  handle.addEventListener('dragstart', (e) => {
+    dragId = s.id;
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', s.id); } catch { /* Safari */ }
+    e.dataTransfer.setDragImage(row, 20, 20);
+  });
+  handle.addEventListener('dragend', () => {
+    dragId = null;
+    row.classList.remove('dragging');
+    document.querySelectorAll('.row.dragover').forEach((n) => n.classList.remove('dragover'));
+  });
+  row.addEventListener('dragover', (e) => {
+    if (!dragId || dragId === s.id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    row.classList.add('dragover');
+  });
+  row.addEventListener('dragleave', () => row.classList.remove('dragover'));
+  row.addEventListener('drop', (e) => {
+    e.preventDefault();
+    row.classList.remove('dragover');
+    if (!dragId || dragId === s.id) return;
+    const from = working.findIndex((x) => x.id === dragId);
+    const to = working.findIndex((x) => x.id === s.id);
+    if (from < 0 || to < 0) return;
+    move(from, to);
+  });
+
+  return row;
+}
+
+function renderList() {
+  const box = $('rows');
+  box.textContent = '';
+  working.forEach((s, i) => box.appendChild(rowNode(s, i)));
+  $('empty').classList.toggle('hidden', working.length > 0);
+  refreshTotals();
+  refreshChrome();
+}
+
+// Chrome = everything outside the rows: save state, banners, footer note.
+function refreshChrome() {
+  const ss = $('savestate');
+  ss.dataset.dirty = String(dirty);
+  ss.textContent = dirty ? 'Unsaved edits' : (lastResult ? 'Sent' : 'Saved');
+
+  const canSave = connected && !saving;
+  $('saveBtn').disabled = !canSave;
+  $('saveTop').disabled = !canSave;
+  $('revertBtn').disabled = !dirty;
+
+  $('footnote').textContent = !connected
+    ? 'Save is off while offline. Nothing can reach the show server.'
+    : saving ? 'Sending' : dirty ? 'You have unsaved edits' : 'Everything here matches the server';
+
+  refreshBanners();
+}
+
+// ---------------------------------------------------------------------------
+// Structural edits
+// ---------------------------------------------------------------------------
+
+function move(from, to) {
+  if (to < 0 || to >= working.length) return;
+  const [s] = working.splice(from, 1);
+  working.splice(to, 0, s);
+  markDirty();
+  renderList();
+  // Keep the moved row in view: on a long rundown the item can otherwise jump
+  // off screen and she loses track of what she just moved.
+  const node = $('rows').children[to];
+  if (node) node.scrollIntoView({ block: 'nearest' });
+}
+
+function addSession(at = working.length, seed = {}) {
+  const s = normalise({ id: uid(), title: 'New session', duration: 300, ...seed });
+  working.splice(at, 0, s);
+  markDirty();
+  renderList();
+  const node = $('rows').children[at];
+  if (node) {
+    node.scrollIntoView({ block: 'center' });
+    const t = node.querySelector('input.title');
+    if (t) { t.focus(); t.select(); }
+  }
+}
+
+function duplicate(index) {
+  const src = working[index];
+  addSession(index + 1, { ...src, id: uid(), title: `${src.title} (copy)`, done: false, actualDuration: null });
+}
+
+// Delete with an inline undo rather than a confirm dialog. A confirm costs a
+// beat every single time; an undo costs nothing unless she actually misfires.
+let undoTimer = null;
+let undoPayload = null;
+
+function remove(index) {
+  const [s] = working.splice(index, 1);
+  undoPayload = { session: s, index };
+  markDirty();
+  renderList();
+  showUndo(`Deleted "${s.title}"`);
+}
+
+function showUndo(text) {
+  $('toastText').textContent = text;
+  $('toast').classList.remove('hidden');
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(hideUndo, 12000);
+}
+
+function hideUndo() {
+  clearTimeout(undoTimer);
+  $('toast').classList.add('hidden');
+  undoPayload = null;
+}
+
+$('toastUndo').addEventListener('click', () => {
+  if (!undoPayload) return;
+  working.splice(Math.min(undoPayload.index, working.length), 0, undoPayload.session);
+  hideUndo();
+  markDirty();
+  renderList();
+});
+
+// ---------------------------------------------------------------------------
+// Save flow
+// ---------------------------------------------------------------------------
+
+function openPreview() {
+  if (!connected || saving) return;
+  const changes = computeChanges();
+  const guarded = changes.filter((c) => c.guarded);
+  const immediate = changes.filter((c) => !c.guarded);
+
+  const body = $('sheetBody');
+  body.textContent = '';
+
+  if (!changes.length) {
+    $('sheetSub').textContent = 'Nothing has changed since the last save. There is nothing to send.';
+    $('sheetConfirm').disabled = true;
+  } else {
+    $('sheetConfirm').disabled = false;
+    // The server is all-or-nothing: one guarded change parks the WHOLE batch.
+    // Say so plainly, because "4 applied, 2 pending" is not what will happen.
+    $('sheetSub').textContent = guarded.length
+      ? `${changes.length} change${changes.length === 1 ? '' : 's'} in this batch. ${guarded.length} of them ${guarded.length === 1 ? 'touches' : 'touch'} the live or next session, so the whole batch waits for the TD to apply it.`
+      : `${changes.length} change${changes.length === 1 ? '' : 's'}, none of them touching the live or next session. These apply straight away.`;
+
+    if (immediate.length) {
+      body.appendChild(el('div', 'grouphead', guarded.length
+        ? `Safe on their own (${immediate.length})`
+        : `Applies immediately (${immediate.length})`));
+      const ul = el('ul');
+      for (const c of immediate) ul.appendChild(el('li', 'a', c.summary));
+      body.appendChild(ul);
+    }
+    if (guarded.length) {
+      body.appendChild(el('div', 'grouphead', `Needs the TD (${guarded.length})`));
+      const ul = el('ul');
+      for (const c of guarded) ul.appendChild(el('li', 'g', c.summary));
+      body.appendChild(ul);
+      body.appendChild(el('div', 'muted', 'Because one or more changes are guarded, the server parks this whole batch as pending. Doc arms it from the control view.'));
+    }
+  }
+
+  $('sheetConfirm').textContent = guarded.length ? 'Send for the TD to apply' : 'Apply now';
+  $('sheet').classList.remove('hidden');
+}
+
+function closePreview() { $('sheet').classList.add('hidden'); }
+
+async function doSave() {
+  if (!connected || saving) return;
+  saving = true;
+  refreshChrome();
+  closePreview();
+  try {
+    const res = await fetch('/api/rundown', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessions: working, by: whoName() }),
+    });
+    const out = await res.json();
+    if (out.ok === false) throw new Error(out.error || 'the server refused it');
+    lastResult = { applied: out.applied || 0, pending: out.pending || 0 };
+    // Whatever we sent is now the thing the server knows about, guarded or not,
+    // so it becomes the new baseline and she is no longer "dirty".
+    baseline = JSON.stringify(working);
+    dirty = false;
+    staleNotice = false;
+  } catch (err) {
+    lastResult = null;
+    $('banners').prepend(banner('trouble', 'That did not save',
+      `The server did not accept the rundown: ${err.message}. Your edits are still here. Try again once the connection settles.`));
+  } finally {
+    saving = false;
+    refreshChrome();
+  }
+}
+
+function reloadFromServer() {
+  adoptFromServer(serverState?.sessions);
+  lastResult = null;
+  renderList();
+}
+
+// ---------------------------------------------------------------------------
+// Name, remembered so the pending banner on Doc's console says who asked
+// ---------------------------------------------------------------------------
+
+const NAME_KEY = 'stage-time:producer-name';
+function whoName() { return $('who').value.trim() || 'Producer'; }
+try { $('who').value = localStorage.getItem(NAME_KEY) || ''; } catch { /* private mode */ }
+$('who').addEventListener('change', () => {
+  try { localStorage.setItem(NAME_KEY, $('who').value.trim()); } catch { /* ignore */ }
+});
+
+// ---------------------------------------------------------------------------
+// Wiring
+// ---------------------------------------------------------------------------
+
+$('addBtn').addEventListener('click', () => addSession());
+$('addFirst').addEventListener('click', () => addSession(0));
+$('saveBtn').addEventListener('click', openPreview);
+$('saveTop').addEventListener('click', openPreview);
+$('sheetCancel').addEventListener('click', closePreview);
+$('sheetConfirm').addEventListener('click', doSave);
+$('revertBtn').addEventListener('click', reloadFromServer);
+
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    // Second press confirms, so cmd+S cmd+S is a complete save without the mouse.
+    if (!$('sheet').classList.contains('hidden')) doSave();
+    else openPreview();
+  }
+  if (e.key === 'Escape' && !$('sheet').classList.contains('hidden')) closePreview();
+});
+
+window.addEventListener('beforeunload', (e) => {
+  if (!dirty) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+// ---------------------------------------------------------------------------
+// State stream
+// ---------------------------------------------------------------------------
+
+// Repaint key: the live session moves as the show runs, and the guard badges
+// follow it, so we track what the guards depend on and repaint only when it moves.
+let lastGuardKey = null;
+
+ST.store.on((state, isConnected) => {
+  connected = isConnected;
+  const first = serverState === null;
+  serverState = state;
+
+  $('offline').classList.toggle('hidden', isConnected);
+  $('showname').textContent = state?.show?.title || 'No show loaded';
+
+  if (!state || !Array.isArray(state.sessions)) {
+    // Null or malformed state: keep whatever she has and say nothing is loaded.
+    refreshChrome();
+    return;
+  }
+
+  const incoming = JSON.stringify(state.sessions.map(normalise));
+
+  if (first || !dirty) {
+    // Safe to rebase: nothing of hers is at risk.
+    if (incoming !== baseline) {
+      adoptFromServer(state.sessions);
+      renderList();
+      return;
+    }
+  } else if (incoming !== baseline) {
+    // She has unsaved work AND the server moved. Never overwrite. Tell her and
+    // let her decide. Losing a producer's edits mid-show is unforgivable.
+    staleNotice = true;
+  }
+
+  // Guard badges depend on the live session, which moves as the show runs, so
+  // repaint the rows when the active session changes even though her data did not.
+  const key = `${state.timer?.activeSessionId}|${state.sessions.map((s) => s.done).join('')}`;
+  if (key !== lastGuardKey) {
+    lastGuardKey = key;
+    renderList();
+    return;
+  }
+
+  refreshChrome();
+});
+
+// Totals include a projected end time, which drifts with the wall clock, so keep
+// it honest without re-rendering the editable rows.
+setInterval(() => { if (serverState) refreshTotals(); }, 1000);
+
+renderList();
+ST.connect();
+</script>
+</body>
+</html>

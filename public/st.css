@@ -1,0 +1,244 @@
+/* Stage Time — shared tokens and primitives.
+   Dark by default: every screen this runs on is in a dim room or on a stage. */
+
+:root {
+  --bg: #08090c;
+  --panel: #101218;
+  --panel-2: #171a22;
+  --line: #262b36;
+  --text: #f2f4f8;
+  --muted: #8b93a7;
+  --dim: #5b6376;
+
+  --running: #22c55e;
+  --warning: #f5b60a;
+  --danger: #ef4444;
+  --over: #ef4444;
+  --accent: #6366f1;
+
+  --radius: 12px;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* Overlay mode for Ecamm / OBS browser sources: the page keys straight over the
+   program feed. Neither EventTimer nor StageTimer offers this. */
+html.transparent, html.transparent body { background: transparent !important; }
+html.transparent .st-chrome, html.no-chrome .st-chrome { display: none !important; }
+
+/* The progress bar survives transparent mode on purpose: on an Ecamm or OBS overlay
+   a thin colour bar across the bottom is usually the point. `chrome=0` still kills it. */
+html.no-chrome .st-progress { display: none !important; }
+
+html.flip { transform: rotate(180deg); }
+
+/* --- timer display ------------------------------------------------------- */
+
+.st-stage {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.st-timerbox {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+}
+
+/* The trick that makes one URL work on a confidence monitor, a lobby screen, and a
+   small Ecamm widget box: size the digits in container-query units and clamp on both
+   axes. No resize listeners, no JS font maths. */
+.st-digits {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  font-size: min(34cqw, 84cqh);
+  line-height: 0.86;
+  letter-spacing: -0.02em;
+  transition: color 300ms ease, text-shadow 300ms ease;
+  white-space: nowrap;
+}
+
+.st-digits.wide { font-size: min(23cqw, 70cqh); }
+
+.st-digits[data-phase='running'] { color: #fff; text-shadow: 0 0 40px rgb(34 197 94 / 0.45); }
+.st-digits[data-phase='warning'] { color: var(--warning); text-shadow: 0 0 44px rgb(245 182 10 / 0.5); }
+.st-digits[data-phase='danger']  { color: var(--danger);  text-shadow: 0 0 48px rgb(239 68 68 / 0.55); }
+.st-digits[data-phase='over']    { color: var(--danger);  text-shadow: 0 0 56px rgb(239 68 68 / 0.7); }
+.st-digits[data-phase='idle']    { color: var(--dim); text-shadow: none; }
+
+.st-digits .colon { animation: st-blink 1s steps(1, end) infinite; }
+@keyframes st-blink { 50% { opacity: 0.25; } }
+.st-digits[data-running='false'] .colon { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .st-digits .colon { animation: none; }
+}
+
+/* --- progress ------------------------------------------------------------ */
+
+.st-progress {
+  height: 10px;
+  width: 100%;
+  background: rgb(255 255 255 / 0.08);
+  flex: none;
+}
+.st-progress > i {
+  display: block;
+  height: 100%;
+  background: var(--running);
+  transition: width 200ms linear, background-color 300ms ease;
+}
+.st-progress[data-phase='warning'] > i { background: var(--warning); }
+.st-progress[data-phase='danger'] > i,
+.st-progress[data-phase='over'] > i { background: var(--danger); }
+
+/* --- header / footer strips --------------------------------------------- */
+
+.st-top, .st-bottom {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 14px 20px;
+  font-size: clamp(14px, 2.4vh, 26px);
+  color: var(--muted);
+}
+
+.st-title { color: var(--accent); font-weight: 700; }
+.st-upnext { text-align: center; line-height: 1.3; }
+.st-upnext b { display: block; color: var(--text); font-weight: 600; }
+.st-label {
+  font-size: 0.62em;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.st-clock { font-variant-numeric: tabular-nums; font-family: var(--mono); }
+
+/* --- messages ------------------------------------------------------------ */
+
+.st-message {
+  flex: none;
+  padding: 18px 24px;
+  text-align: center;
+  font-weight: 700;
+  font-size: clamp(20px, 5vh, 64px);
+  line-height: 1.15;
+}
+.st-message[data-level='info']    { background: #1d4ed8; color: #fff; }
+.st-message[data-level='warning'] { background: var(--warning); color: #1a1300; }
+.st-message[data-level='urgent']  { background: var(--danger); color: #fff; animation: st-pulse 1s ease-in-out infinite; }
+@keyframes st-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .st-message[data-level='urgent'] { animation: none; } }
+
+/* --- blackout ------------------------------------------------------------ */
+
+.st-blackout {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 99;
+}
+
+/* --- offline badge ------------------------------------------------------- */
+
+.st-offline {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: 100;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgb(239 68 68 / 0.16);
+  border: 1px solid rgb(239 68 68 / 0.5);
+  color: #fca5a5;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* --- control-surface primitives ----------------------------------------- */
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, transform 60ms ease;
+}
+.btn:hover { background: #1e2230; }
+.btn:active { transform: translateY(1px); }
+.btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+.btn.primary { background: var(--running); border-color: transparent; color: #05230f; }
+.btn.warn { background: var(--warning); border-color: transparent; color: #1a1300; }
+.btn.danger { background: var(--danger); border-color: transparent; color: #fff; }
+.btn.ghost { background: transparent; }
+.btn.wide { width: 100%; }
+
+.field {
+  width: 100%;
+  background: #0c0e14;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 11px;
+}
+.field:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.muted { color: var(--muted); }
+.dim { color: var(--dim); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.pill.live { background: var(--running); color: #05230f; }
+.pill.next { background: #1e293b; color: #93a3bd; }
+.pill.done { background: #14261a; color: #4b8f63; }
+.pill.hard { background: rgb(239 68 68 / 0.18); color: #fca5a5; border: 1px solid rgb(239 68 68 / 0.45); }
+.pill.pinned { background: rgb(99 102 241 / 0.18); color: #a5b4fc; border: 1px solid rgb(99 102 241 / 0.45); }

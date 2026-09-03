@@ -1,0 +1,16 @@
+{
+  "name": "stage-time",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first stage timer for live events. No cloud, no account, no dependencies.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --show shows/card-party-dallas-day1.json",
+    "test": "node test/run.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

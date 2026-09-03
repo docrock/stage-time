@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agenda — Stage Time</title>
+<link rel="stylesheet" href="./st.css">
+<style>
+  /* Green room board. Read from ten feet away, on a screen that may be up for six
+     hours. Everything sizes off viewport units so one URL fits a 13" laptop on the
+     comms table and a 55" panel bolted to the backstage wall. */
+
+  body { overflow: hidden; }
+
+  .ag-app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  /* --- alarm banner ------------------------------------------------------- */
+
+  /* The reason this screen exists. A hard session is one the talent physically
+     leaves for, so a projected overrun is not a scheduling annoyance, it is a
+     segment that will not happen. It gets the loudest thing on the page. */
+  .ag-alarm {
+    flex: none;
+    display: none;
+    background: var(--danger);
+    color: #fff;
+    padding: clamp(10px, 1.6vh, 20px) clamp(14px, 2vw, 28px);
+    font-weight: 800;
+    line-height: 1.15;
+    animation: st-pulse 1.4s ease-in-out infinite;
+  }
+  .ag-alarm.on { display: block; }
+  .ag-alarm .k {
+    display: block;
+    font-size: clamp(11px, 1.5vh, 16px);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    opacity: 0.85;
+    margin-bottom: 2px;
+  }
+  .ag-alarm .v { font-size: clamp(19px, 3.4vh, 42px); }
+  @media (prefers-reduced-motion: reduce) { .ag-alarm { animation: none; } }
+
+  /* --- header ------------------------------------------------------------- */
+
+  .ag-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: clamp(12px, 2vw, 32px);
+    padding: clamp(10px, 1.8vh, 22px) clamp(14px, 2vw, 28px);
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .ag-showname { min-width: 0; }
+  .ag-showname h1 {
+    margin: 0;
+    font-size: clamp(17px, 2.8vh, 34px);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ag-showname .sub {
+    font-size: clamp(11px, 1.5vh, 17px);
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Whole-event summary. Counts, time left in the whole show, and one bar. */
+  .ag-summary {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: clamp(12px, 2vw, 30px);
+  }
+  .ag-stat { text-align: right; white-space: nowrap; }
+  .ag-stat .k {
+    display: block;
+    font-size: clamp(9px, 1.2vh, 13px);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .ag-stat .v {
+    font-size: clamp(16px, 2.6vh, 30px);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .ag-bar {
+    width: clamp(90px, 14vw, 260px);
+    height: 10px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.09);
+    overflow: hidden;
+  }
+  .ag-bar > i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--accent);
+    transition: width 400ms linear;
+  }
+  .ag-clock {
+    font-size: clamp(20px, 3.6vh, 46px);
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  /* --- the list ----------------------------------------------------------- */
+
+  .ag-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: clamp(8px, 1.4vh, 18px) clamp(10px, 1.6vw, 22px);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(5px, 0.8vh, 11px);
+    scrollbar-width: thin;
+  }
+
+  .ag-row {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: clamp(10px, 1.4vw, 22px);
+    padding: clamp(7px, 1.2vh, 16px) clamp(10px, 1.4vw, 20px);
+    border: 1px solid var(--line);
+    border-left: 5px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+  }
+  .ag-main { min-width: 0; flex: 1; }
+  .ag-tt {
+    font-size: clamp(15px, 2.4vh, 30px);
+    font-weight: 700;
+    line-height: 1.15;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ag-sp {
+    font-size: clamp(11px, 1.6vh, 19px);
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ag-tags {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .ag-right {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .ag-when {
+    font-size: clamp(13px, 2vh, 26px);
+    font-weight: 700;
+    font-family: var(--mono);
+  }
+  .ag-dur { font-size: clamp(10px, 1.4vh, 16px); color: var(--dim); }
+
+  /* DONE: dimmed, but still carries the planned versus actual analytics that
+     EventTimer sells as a paid post-show report. Here it is live and free. */
+  .ag-row.done { opacity: 0.5; background: transparent; padding-top: 5px; padding-bottom: 5px; }
+  .ag-row.done .ag-tt { font-size: clamp(13px, 1.9vh, 23px); font-weight: 600; }
+  .ag-check { color: var(--running); font-size: clamp(14px, 2vh, 24px); flex: none; }
+  .ag-delta { font-weight: 800; }
+  .ag-delta.over { color: var(--danger); }
+  .ag-delta.under { color: var(--running); }
+
+  /* LIVE: must win the page at a glance. */
+  .ag-row.live {
+    background: var(--panel-2);
+    border-color: rgb(255 255 255 / 0.16);
+    padding: clamp(10px, 1.8vh, 24px) clamp(12px, 1.6vw, 24px);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.03), 0 10px 34px rgb(0 0 0 / 0.5);
+  }
+  .ag-row.live .ag-tt { font-size: clamp(19px, 3.4vh, 46px); font-weight: 800; }
+  .ag-row.live .ag-sp { font-size: clamp(12px, 1.9vh, 23px); }
+  /* .st-digits sizes itself from its container, so the box is the only knob. */
+  .ag-livebox {
+    flex: none;
+    width: clamp(150px, 20vw, 330px);
+    height: clamp(52px, 9vh, 120px);
+  }
+
+  .ag-row.next { border-color: rgb(147 163 189 / 0.35); }
+
+  /* --- pinned / slack ----------------------------------------------------- */
+
+  .ag-slack {
+    font-size: clamp(11px, 1.6vh, 19px);
+    font-weight: 800;
+    letter-spacing: 0.01em;
+  }
+  .ag-slack.ok   { color: var(--running); }
+  .ag-slack.tight { color: var(--warning); }
+  .ag-slack.late { color: var(--danger); }
+
+  /* --- empty / waiting ---------------------------------------------------- */
+
+  .ag-empty {
+    margin: auto;
+    text-align: center;
+    color: var(--dim);
+    font-size: clamp(14px, 2.4vh, 28px);
+    padding: 40px 20px;
+  }
+
+  /* Overlay mode: no panel fills, so the board keys cleanly over a program feed. */
+  html.transparent .ag-head,
+  html.transparent .ag-row { background: transparent; }
+</style>
+</head>
+<body>
+<div class="ag-app">
+  <!-- Not marked .st-chrome on purpose. chrome=0 strips furniture, and a hard stop
+       about to be missed is not furniture, it is the thing being displayed. -->
+  <div class="ag-alarm" id="alarm" role="alert">
+    <span class="k">Hard stop at risk</span>
+    <span class="v" id="alarmText"></span>
+  </div>
+
+  <header class="ag-head st-chrome">
+    <div class="ag-showname">
+      <h1 id="showTitle">Stage Time</h1>
+      <div class="sub" id="showSub"></div>
+    </div>
+    <div class="ag-summary">
+      <div class="ag-stat"><span class="k">Done</span><span class="v" id="statDone">0 of 0</span></div>
+      <div class="ag-stat"><span class="k">Time left</span><span class="v" id="statLeft">0m</span></div>
+      <div class="ag-bar"><i id="eventBar"></i></div>
+      <div class="ag-clock st-clock" id="clock"></div>
+    </div>
+  </header>
+
+  <main class="ag-list" id="list"></main>
+</div>
+
+<div class="st-offline" id="offline" hidden>OFFLINE</div>
+
+<script type="module">
+import * as ST from './st.js';
+
+ST.applyChrome();          // ?transparent ?chrome ?flip, before first paint
+ST.connect();
+
+// A thing shows only if BOTH the URL and the operator's toggle allow it.
+const SHOW_CLOCK = ST.opt('clock', true);
+const SHOW_PROGRESS = ST.opt('progress', true);
+const SHOW_UPNEXT = ST.opt('upnext', true);
+// ?title=0 is deliberately ignored here. On a timer view it hides one label; on a
+// board that is nothing but titles it would leave an empty rectangle.
+
+const el = {
+  alarm: document.getElementById('alarm'),
+  alarmText: document.getElementById('alarmText'),
+  showTitle: document.getElementById('showTitle'),
+  showSub: document.getElementById('showSub'),
+  statDone: document.getElementById('statDone'),
+  statLeft: document.getElementById('statLeft'),
+  eventBar: document.getElementById('eventBar'),
+  clock: document.getElementById('clock'),
+  list: document.getElementById('list'),
+  offline: document.getElementById('offline'),
+};
+
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"]/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]
+  ));
+}
+
+// Total show time reads better in hours than in "137m", which is what
+// ST.fmtDuration would give for a whole afternoon.
+function fmtSpan(seconds) {
+  const s = Math.max(0, Math.round(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.round((s - h * 3600) / 60);
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+  return `${m}m`;
+}
+
+// "12:20" is stored as local wall clock with no date. Anchor it to today so it can
+// be compared against a real timestamp and printed the way a producer says it.
+function pinnedEpoch(hhmm, at) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm ?? '').trim());
+  if (!m) return null;
+  const d = new Date(at);
+  d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  return d.getTime();
+}
+
+// Countdown markup: the shared colon blink needs its own span.
+function digitsHTML(text) {
+  return esc(text).replace(':', '<span class="colon">:</span>');
+}
+
+// Only touch the DOM when the value actually changed. Sixty frames a second of
+// identical string writes is how a green room screen ends up warming a laptop.
+function setText(node, value) {
+  if (node && node.__v !== value) { node.__v = value; node.textContent = value; }
+}
+function setHTML(node, value) {
+  if (node && node.__h !== value) { node.__h = value; node.innerHTML = value; }
+}
+function setAttr(node, name, value) {
+  if (node && node.getAttribute(name) !== value) node.setAttribute(name, value);
+}
+
+// ---------------------------------------------------------------------------
+// Projection
+//
+// state.projection is the server's snapshot, taken at the last revision. Between
+// revisions two things move it: a paused timer and a live session running over.
+// Both are exactly the moments a producer needs the truth, so recompute the same
+// arithmetic locally every frame, the way st.js recomputes the countdown instead
+// of trusting a pushed number. The server's values are the fallback.
+// ---------------------------------------------------------------------------
+
+function projectNow(state, at) {
+  const out = new Map();
+  const sessions = state.sessions || [];
+  const activeIdx = sessions.findIndex((s) => s.id === state.timer?.activeSessionId);
+
+  let cursor = at;
+  if (activeIdx >= 0) cursor = at + Math.max(0, ST.remaining(state, at)) * 1000;
+
+  for (let i = activeIdx >= 0 ? activeIdx + 1 : 0; i < sessions.length; i++) {
+    const s = sessions[i];
+    if (s.done) continue;
+    let slackSeconds = null;
+    if (s.pinnedAt) {
+      const pin = pinnedEpoch(s.pinnedAt, at);
+      if (pin != null) slackSeconds = Math.round((pin - cursor) / 1000);
+    }
+    out.set(s.id, { projectedStart: cursor, slackSeconds });
+    cursor += (s.duration || 0) * 1000;
+  }
+  return out;
+}
+
+// slack >= 120s is comfortable, under two minutes is tight, negative is late.
+function slackView(slack) {
+  if (slack == null) return null;
+  if (slack < 0) return { cls: 'late', text: `${ST.fmtDuration(-slack)} LATE` };
+  if (slack < 120) return { cls: 'tight', text: `${ST.fmtDuration(slack)} of room` };
+  return { cls: 'ok', text: `${ST.fmtDuration(slack)} of room` };
+}
+
+// ---------------------------------------------------------------------------
+// Build: runs only when state.revision changes. The rows are static between
+// revisions, so rebuilding them every frame would be pure waste.
+// ---------------------------------------------------------------------------
+
+let builtRevision = null;
+let live = null;      // { digits, box, session }
+let pinnedRows = [];  // [{ id, title, hard, slackEl, whenEl }]
+
+function build(state) {
+  live = null;
+  pinnedRows = [];
+  el.list.replaceChildren();
+
+  setText(el.showTitle, state.show?.title || 'Stage Time');
+  setText(el.showSub, state.show?.subtitle || '');
+  el.showSub.hidden = !state.show?.subtitle;
+
+  const sessions = state.sessions || [];
+  if (!sessions.length) {
+    const d = document.createElement('div');
+    d.className = 'ag-empty';
+    d.textContent = 'No sessions in the rundown yet.';
+    el.list.append(d);
+    return;
+  }
+
+  const activeId = state.timer?.activeSessionId || null;
+  let nextTagged = false;
+
+  for (const s of sessions) {
+    const isLive = !s.done && s.id === activeId;
+    const isUpcoming = !s.done && !isLive;
+
+    const row = document.createElement('div');
+    row.className = 'ag-row' + (s.done ? ' done' : isLive ? ' live' : '');
+    // The session's own colour is how a producer recognises a segment on the
+    // rundown sheet. Carry it on the live row so the two match.
+    if (isLive && s.color) row.style.borderLeftColor = s.color;
+    else if (isUpcoming && s.color) row.style.borderLeftColor = s.color + '66';
+
+    const tags = [];
+    if (s.done) tags.push('<span class="pill done">Done</span>');
+    if (isLive) tags.push('<span class="pill live">Live</span>');
+    if (isUpcoming && !nextTagged) {
+      nextTagged = true;
+      if (SHOW_UPNEXT !== false && state.timer?.showUpNext !== false) {
+        tags.push('<span class="pill next">Next</span>');
+      }
+    }
+    if (s.hard) tags.push('<span class="pill hard">Hard</span>');
+    if (s.pinnedAt) {
+      const pin = pinnedEpoch(s.pinnedAt, ST.now());
+      const label = pin != null ? ST.fmtTimeOfDay(pin) : s.pinnedAt;
+      tags.push(`<span class="pill pinned">Pinned ${esc(label)}</span>`);
+    }
+    if (!s.done && s.pinnedAt) tags.push('<span class="ag-slack"></span>');
+
+    let right = '';
+    if (s.done) {
+      const planned = s.duration || 0;
+      const actual = Number.isFinite(s.actualDuration) ? s.actualDuration : null;
+      if (actual == null) {
+        right = `<div class="ag-dur">${esc(ST.fmtDuration(planned))} planned</div>`;
+      } else {
+        const delta = actual - planned;
+        const cls = delta > 0 ? 'over' : delta < 0 ? 'under' : '';
+        const sign = delta > 0 ? '+' : delta < 0 ? '-' : '';
+        right = `<div class="ag-dur">${esc(ST.fmtDuration(planned))} planned, `
+          + `${esc(ST.fmtDuration(actual))} actual, `
+          + `<span class="ag-delta ${cls}">${sign}${esc(ST.fmtDuration(Math.abs(delta)))}</span></div>`;
+      }
+    } else if (isLive) {
+      right = '<div class="st-timerbox ag-livebox"><div class="st-digits" data-phase="idle">00:00</div></div>';
+    } else {
+      right = '<div class="ag-when"></div>'
+        + `<div class="ag-dur">${esc(ST.fmtDuration(s.duration || 0))}</div>`;
+    }
+
+    row.innerHTML =
+      (s.done ? '<span class="ag-check">&#10003;</span>' : '')
+      + '<div class="ag-main">'
+      + `<div class="ag-tt">${esc(s.title || 'Untitled')}</div>`
+      + (s.speaker ? `<div class="ag-sp">${esc(s.speaker)}</div>` : '')
+      + (tags.length ? `<div class="ag-tags">${tags.join('')}</div>` : '')
+      + '</div>'
+      + `<div class="ag-right">${right}</div>`;
+
+    el.list.append(row);
+
+    if (isLive) {
+      live = { session: s, digits: row.querySelector('.st-digits') };
+      // A long rundown pushes the live row off a wall-mounted board and nobody is
+      // standing there to scroll it. Pull it back into view on every rebuild, which
+      // is exactly when the segment can have changed.
+      requestAnimationFrame(() => row.scrollIntoView({ block: 'center', behavior: 'auto' }));
+    } else if (isUpcoming) {
+      pinnedRows.push({
+        id: s.id,
+        title: s.title || 'Untitled',
+        hard: Boolean(s.hard),
+        pinnedAt: s.pinnedAt,
+        slackEl: row.querySelector('.ag-slack'),
+        whenEl: row.querySelector('.ag-when'),
+      });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Frame: clock, live countdown, projected starts, slack, alarm, summary.
+// ---------------------------------------------------------------------------
+
+function paint() {
+  const state = ST.store.state;
+  const connected = ST.store.connected;
+
+  el.offline.hidden = connected || document.documentElement.classList.contains('transparent');
+
+  if (!state) {
+    if (builtRevision !== 'none') {
+      builtRevision = 'none';
+      live = null;
+      pinnedRows = [];
+      el.list.replaceChildren(
+        Object.assign(document.createElement('div'), {
+          className: 'ag-empty',
+          textContent: 'Waiting for the show server.',
+        }),
+      );
+    }
+    return;
+  }
+
+  if (state.revision !== builtRevision) {
+    build(state);
+    builtRevision = state.revision;
+  }
+
+  const at = ST.now();
+
+  // Wall clock. Hidden when either the URL or the operator says so.
+  const wantClock = SHOW_CLOCK !== false && state.timer?.showClock !== false;
+  el.clock.hidden = !wantClock;
+  if (wantClock) setText(el.clock, ST.fmtTimeOfDay(at));
+
+  // Live countdown.
+  const sessions = state.sessions || [];
+  let liveRemaining = 0;
+  if (live) {
+    liveRemaining = ST.remaining(state, at);
+    setHTML(live.digits, digitsHTML(ST.fmtClock(liveRemaining)));
+    setAttr(live.digits, 'data-phase', ST.phase(state, at));
+    setAttr(live.digits, 'data-running', String(Boolean(state.timer?.isRunning)));
+  }
+
+  // Projected starts and slack.
+  const proj = projectNow(state, at);
+  const server = new Map((state.projection || []).map((p) => [p.id, p]));
+  let worst = null; // most negative slack on a hard session
+
+  for (const r of pinnedRows) {
+    const p = proj.get(r.id) || server.get(r.id) || {};
+    if (r.whenEl && p.projectedStart) setText(r.whenEl, ST.fmtTimeOfDay(p.projectedStart));
+    if (!r.slackEl) continue;
+    const slack = p.slackSeconds ?? null;
+    const view = slackView(slack);
+    if (!view) { setText(r.slackEl, ''); continue; }
+    setText(r.slackEl, view.text);
+    setAttr(r.slackEl, 'class', `ag-slack ${view.cls}`);
+    if (r.hard && slack < 0 && (!worst || slack < worst.slack)) worst = { slack, title: r.title };
+  }
+
+  // The alarm. One line, one number, no ambiguity.
+  if (worst) {
+    setText(el.alarmText, `${worst.title} projects ${ST.fmtDuration(-worst.slack)} late`);
+    el.alarm.classList.add('on');
+  } else {
+    el.alarm.classList.remove('on');
+  }
+
+  // Whole-event summary.
+  let doneCount = 0;
+  let remainingTotal = 0;
+  let spent = 0;
+  for (const s of sessions) {
+    if (s.done) {
+      doneCount++;
+      spent += Number.isFinite(s.actualDuration) ? s.actualDuration : (s.duration || 0);
+    } else if (live && s.id === live.session.id) {
+      // The live segment counts what it has actually used, not what it planned.
+      const used = (s.duration || 0) - liveRemaining;
+      spent += Math.max(0, used);
+      remainingTotal += Math.max(0, liveRemaining);
+    } else {
+      remainingTotal += s.duration || 0;
+    }
+  }
+  setText(el.statDone, `${doneCount} of ${sessions.length} done`);
+  setText(el.statLeft, fmtSpan(remainingTotal));
+
+  const wantProgress = SHOW_PROGRESS !== false && state.timer?.showProgressBar !== false;
+  el.eventBar.parentElement.hidden = !wantProgress;
+  if (wantProgress) {
+    const total = spent + remainingTotal;
+    const pct = total > 0 ? Math.min(100, (spent / total) * 100) : 0;
+    const w = pct.toFixed(1) + '%';
+    if (el.eventBar.__w !== w) { el.eventBar.__w = w; el.eventBar.style.width = w; }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Loop
+//
+// Nothing on this board changes faster than once a second: the countdown reads in
+// whole seconds and the slack figures in minutes. So the rAF loop does its work on
+// a 200ms gate and skips entirely while the tab is hidden. That keeps a board left
+// up for a six hour show from spinning a fan all afternoon.
+// ---------------------------------------------------------------------------
+
+let lastPaint = 0;
+ST.tick(() => {
+  if (document.hidden) return;
+  const t = performance.now();
+  if (t - lastPaint < 200) return;
+  lastPaint = t;
+  paint();
+});
+
+// Paint on every state push as well as on the frame loop. Two reasons: a segment
+// change backstage should land the moment the TD hits it rather than waiting out
+// the gate, and a board on a background tab or a sleeping display gets no animation
+// frames at all, so the push is the only thing that keeps it current.
+ST.store.on(() => { lastPaint = 0; paint(); });
+paint();
+</script>
+</body>
+</html>
