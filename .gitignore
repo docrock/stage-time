@@ -1,0 +1,16 @@
+# OS cruft
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Node / build
+node_modules/
+dist/
+build/
+
+# Secrets — never commit keys/tokens
+.env
+.env.*
+*.key
+*secret*
