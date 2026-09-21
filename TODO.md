@@ -7,16 +7,18 @@ Ordered by what would hurt most on a show day. Reasoning lives in `docs/dev-plan
 - [ ] **Two-Mac rehearsal on a real network.** The producer gate has only ever been tested by
       one process talking to itself. Doc on `/control`, Marielou on `/rundown`, edits landing
       as pending, arming them live. Do this at home, not at a venue.
-- [ ] **Survive a restart.** Timer state is in memory. Quitting the server mid-session loses
-      the running clock. Persist `timer` + session done-flags to disk on every change, resume
-      on boot, and ignore state older than a few hours so yesterday's show does not come back.
 - [ ] **Real trackpad drag and drop** in `/rundown`. Built and reviewed, never actually dragged.
 - [ ] **Bulletproof the Ecamm link.** Make the control page's Copy button emit an explicit
       `http://` plus the raw LAN IP, never `.local`. This is the exact failure from Sept 20.
 - [ ] **Ad-hoc timer.** "Put 5 minutes on the clock right now" without touching the rundown.
       Every live show needs it and there is currently no way to do it.
-- [ ] **Tailscale.** Doc is researching. Once the tailnet is up, confirm `/control` reaches the
-      local server from a phone on cellular, and that on-site it routes over the LAN.
+- [ ] **Producer override.** Marielou needs a way to take transport when Doc is tied up in
+      audio. Decided 2026-09-20. This is a permission model, not a button: roles, a visible
+      "who has the con" indicator, and a handoff that cannot leave both of them thinking the
+      other has it. Design it before building it.
+- [ ] **Tailscale.** Up on Darth Nihilus as of 2026-09-20. Still to add: Max Rebo and the
+      iPhone 18 Pro Max. Then confirm `/control` reaches the local server from the phone on
+      cellular, and that on-site it routes over the LAN rather than out to the internet.
 
 ## Before any public URL exists
 
@@ -52,6 +54,9 @@ Ordered by what would hurt most on a show day. Reasoning lives in `docs/dev-plan
 - [x] Transparent overlay mode for Ecamm and OBS
 - [x] Countdown survives a dead server (timestamp maths plus a cached copy)
 - [x] Clock-skew correction between machines
-- [x] 15 smoke tests, including validating the real Dallas rundowns
+- [x] 23 smoke tests, including validating the real Dallas rundowns
 - [x] Both Card Party Dallas rundowns built from Marielou's ROS
 - [x] Friendly terminal hint when a client tries `https://`
+- [x] **Restart survival.** Atomic snapshot after every change, resume on boot with the same
+      show and a still-running clock. Stale, orphaned, and corrupt snapshots all refused.
+      Verified against a real `kill -9`.

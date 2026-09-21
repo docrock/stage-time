@@ -13,6 +13,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import * as S from './lib/state.js';
+import * as P from './lib/persist.js';
 import { diffSessions, protectedSessionIds } from './lib/diff.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -25,8 +26,15 @@ function flag(name, fallback) {
   return i >= 0 && args[i + 1] ? args[i + 1] : fallback;
 }
 
+function has(name) {
+  return args.includes(`--${name}`);
+}
+
 const PORT = Number(flag('port', process.env.PORT || 7373));
 const SHOW_FILE = flag('show', null);
+const FRESH = has('fresh');
+const MAX_RESUME_AGE = Number(flag('max-resume-age', P.DEFAULT_MAX_AGE_HOURS));
+const RUN_DIR = path.join(ROOT, 'run');
 
 // ---------------------------------------------------------------------------
 // State
@@ -43,20 +51,74 @@ function loadShow(file) {
   return raw;
 }
 
-if (SHOW_FILE) {
+// --- boot: which show, and do we resume a crashed session? --------------------
+
+const snapshotRead = FRESH
+  ? { ok: false, reason: 'skipped' }
+  : P.read(RUN_DIR, { maxAgeHours: MAX_RESUME_AGE });
+
+function firstShowFile() {
   try {
-    loadShow(SHOW_FILE);
+    return fs.readdirSync(SHOWS).filter((f) => f.endsWith('.json')).sort()[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+// An explicit --show always wins. Otherwise a plain `npm start` picks up whatever
+// was on air when the process died, because that is what you want at 10:15 on a
+// show day: the same command, back where you were.
+let wanted = SHOW_FILE;
+if (!wanted && snapshotRead.ok && snapshotRead.snap.showFile) {
+  const candidate = path.join(SHOWS, snapshotRead.snap.showFile);
+  if (fs.existsSync(candidate)) wanted = candidate;
+}
+if (!wanted) {
+  const first = firstShowFile();
+  if (first) wanted = path.join(SHOWS, first);
+}
+
+if (wanted) {
+  try {
+    loadShow(wanted);
   } catch (err) {
-    console.error(`Could not load show file ${SHOW_FILE}: ${err.message}`);
+    console.error(`Could not load show file ${wanted}: ${err.message}`);
     process.exit(1);
   }
-} else {
-  // Nothing specified — pick the first show file if there is one, so `npm start`
-  // on a fresh clone lands somewhere useful instead of an empty screen.
-  try {
-    const first = fs.readdirSync(SHOWS).filter((f) => f.endsWith('.json')).sort()[0];
-    if (first) loadShow(path.join(SHOWS, first));
-  } catch { /* no shows dir yet — fine */ }
+}
+
+const writer = P.createWriter(RUN_DIR, {
+  onError: (err) => console.error(`  ⚠  could not write crash snapshot: ${err.message}`),
+});
+
+// What the banner tells the operator about the resume. Being explicit matters:
+// silently restoring a live timer is alarming, and silently discarding one is worse.
+let resumeNote = null;
+
+if (snapshotRead.ok && showPath && snapshotRead.snap.showFile === path.basename(showPath)) {
+  const { droppedActive } = P.restore(state, snapshotRead.snap);
+  const gap = Math.round(snapshotRead.ageMs / 1000);
+  if (droppedActive) {
+    resumeNote = `Resumed, but the session that was on air is no longer in the show file.`;
+  } else if (state.timer.activeSessionId) {
+    const s = S.sessionById(state, state.timer.activeSessionId);
+    const rem = Math.round(S.remainingNow(state));
+    const sign = rem < 0 ? '-' : '';
+    const mm = String(Math.floor(Math.abs(rem) / 60)).padStart(2, '0');
+    const ss = String(Math.abs(rem) % 60).padStart(2, '0');
+    resumeNote =
+      `Resumed "${s?.title}" ${state.timer.isRunning ? 'still running' : 'paused'} ` +
+      `at ${sign}${mm}:${ss}, after ${gap}s down.`;
+  } else {
+    resumeNote = `Resumed display settings. No session was armed.`;
+  }
+} else if (snapshotRead.reason === 'stale') {
+  const hrs = Math.round(snapshotRead.ageMs / 3600_000);
+  resumeNote = `Ignored a snapshot from ${hrs}h ago. Too old to be this show.`;
+} else if (snapshotRead.reason === 'unreadable') {
+  resumeNote = `Ignored an unreadable snapshot.`;
+} else if (snapshotRead.ok) {
+  resumeNote = `Ignored a snapshot: it belongs to ${snapshotRead.snap.showFile}.`;
 }
 
 function saveShow() {
@@ -104,6 +166,7 @@ function payload() {
 
 function broadcast() {
   state.revision++;
+  writer.save(state, showPath);
   const data = `data: ${JSON.stringify(payload())}\n\n`;
   for (const res of clients) {
     try { res.write(data); } catch { clients.delete(res); }
@@ -362,6 +425,7 @@ server.listen(PORT, () => {
 
   console.log(`\n  STAGE TIME  ·  ${state.show.title}`);
   console.log(`  ${state.sessions.length} sessions loaded${showPath ? ` from ${path.basename(showPath)}` : ''}`);
+  if (resumeNote) console.log(`  ↻ ${resumeNote}`);
   console.log(`  ${bar}`);
   const rows = [
     ['Control  (you)', '/control'],
@@ -380,3 +444,18 @@ server.listen(PORT, () => {
   console.log(`\n  Hand the raw IP to other machines. .local resolution is the`);
   console.log(`  flakiest link in the chain and an IP always works.\n`);
 });
+
+// Flush the snapshot on the way out, so a deliberate quit is as recoverable as a
+// crash. `--fresh` on the next boot is the way to deliberately start clean.
+let shuttingDown = false;
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => {
+    if (shuttingDown) process.exit(0);
+    shuttingDown = true;
+    writer.flush();
+    console.log('\n  Snapshot saved. Start again to resume, or use --fresh to start clean.\n');
+    server.close(() => process.exit(0));
+    // Open SSE streams hold the server open, so do not wait on them forever.
+    setTimeout(() => process.exit(0), 300).unref();
+  });
+}

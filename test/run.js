@@ -4,10 +4,12 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import * as S from '../lib/state.js';
+import * as P from '../lib/persist.js';
 import { diffSessions, protectedSessionIds } from '../lib/diff.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -161,6 +163,114 @@ test('change summaries read like English', () => {
   const proposed = st.sessions.map((s) => (s.id === 'c' ? { ...s, duration: 420 } : s));
   const changes = diffSessions(st.sessions, proposed, new Set());
   assert.equal(changes[0].summary, '"Game" duration: 5m → 7m');
+});
+
+console.log('\ncrash survival');
+
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'stage-time-test-'));
+
+test('a running timer resumes still running, having lost the downtime', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'a');
+  const t0 = Date.now();
+  S.start(st, t0);
+
+  const snap = P.snapshot(st, 'test.json');
+  // Process dies. Two minutes pass. Meanwhile every display has been counting down
+  // from its own cached copy, so the server must come back in step with them.
+  const fresh = S.makeState(show());
+  P.restore(fresh, snap);
+
+  assert.equal(fresh.timer.isRunning, true);
+  assert.equal(fresh.timer.activeSessionId, 'a');
+  assert.equal(Math.round(S.remainingNow(fresh, t0 + 120_000)), 480, 'the clock kept running');
+});
+
+test('done flags and actual durations survive', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'a');
+  const t0 = Date.now();
+  S.start(st, t0);
+  S.advance(st, t0 + 660_000);
+
+  const fresh = S.makeState(show());
+  P.restore(fresh, P.snapshot(st, 'test.json'));
+  const a = fresh.sessions.find((s) => s.id === 'a');
+  assert.equal(a.done, true);
+  assert.equal(a.actualDuration, 660);
+});
+
+test('a parked producer batch survives a restart', () => {
+  const st = S.makeState(show());
+  st.pending = { by: 'Marielou', at: Date.now(), changes: [{ summary: 'x', guarded: true }], sessions: [] };
+  const fresh = S.makeState(show());
+  P.restore(fresh, P.snapshot(st, 'test.json'));
+  assert.equal(fresh.pending.by, 'Marielou', 'her work must not vanish because the server blinked');
+});
+
+test('a session deleted from the show file while down is not resurrected', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'c');
+  S.start(st);
+  const snap = P.snapshot(st, 'test.json');
+
+  const trimmed = show();
+  trimmed.sessions = trimmed.sessions.filter((s) => s.id !== 'c');
+  const fresh = S.makeState(trimmed);
+  const { droppedActive } = P.restore(fresh, snap);
+
+  assert.equal(droppedActive, true);
+  assert.equal(fresh.timer.activeSessionId, null);
+  assert.equal(fresh.timer.isRunning, false, 'never resume onto a session that no longer exists');
+});
+
+test('yesterday\'s show does not walk back in', () => {
+  const dir = path.join(TMP, 'stale');
+  const w = P.createWriter(dir);
+  const st = S.makeState(show());
+  w.save(st, 'test.json');
+  w.flush();
+
+  const dayLater = Date.now() + 26 * 3600_000;
+  const r = P.read(dir, { maxAgeHours: 12, now: dayLater });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'stale');
+});
+
+test('a recent snapshot reads back', () => {
+  const dir = path.join(TMP, 'recent');
+  const w = P.createWriter(dir);
+  const st = S.makeState(show());
+  S.selectSession(st, 'b');
+  S.start(st);
+  w.save(st, 'test.json');
+  w.flush();
+
+  const r = P.read(dir);
+  assert.equal(r.ok, true);
+  assert.equal(r.snap.showFile, 'test.json');
+  assert.equal(r.snap.timer.activeSessionId, 'b');
+});
+
+test('missing and corrupt snapshots fail safely', () => {
+  assert.equal(P.read(path.join(TMP, 'nothing-here')).reason, 'none');
+  const dir = path.join(TMP, 'corrupt');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'state.json'), '{ this is not json');
+  assert.equal(P.read(dir).reason, 'unreadable');
+});
+
+test('writes are atomic, so a crash mid-write cannot poison the next boot', () => {
+  const dir = path.join(TMP, 'atomic');
+  const w = P.createWriter(dir);
+  const st = S.makeState(show());
+  for (let i = 0; i < 20; i++) {
+    S.adjust(st, 1);
+    w.save(st, 'test.json');
+  }
+  w.flush();
+  assert.equal(fs.existsSync(path.join(dir, 'state.json.tmp')), false, 'no temp file left behind');
+  assert.doesNotThrow(() => JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8')));
 });
 
 console.log('\nreal show files');

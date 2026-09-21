@@ -14,3 +14,6 @@ build/
 .env.*
 *.key
 *secret*
+
+# Runtime crash snapshot, machine-local
+run/

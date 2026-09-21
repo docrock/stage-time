@@ -5,7 +5,7 @@ Written 2026-09-20. Revisit after the next show.
 ## Where it stands
 
 v0.1 is built, tested, and running: zero-dependency Node server, five views, SSE push,
-wall-clock pins with live slack, the producer gate, 15 smoke tests, and both real Card
+wall-clock pins with live slack, the producer gate, 23 smoke tests, and both real Card
 Party Dallas rundowns in `shows/`.
 
 What has NOT happened yet: a full rehearsal on two machines over a real network, and any
@@ -43,8 +43,6 @@ The point of this phase is that nothing surprises us live. No new features.
 
 - Rehearse two Macs on one network, including the producer gate end to end with a human on
   the other machine. This has only ever been tested by one process talking to itself.
-- Survive a restart. Timer state is in memory; quitting the server mid-session loses the
-  running clock. Persist it and resume on boot.
 - Real trackpad drag and drop in the rundown editor. Built and code-reviewed, never dragged.
 - Make the Ecamm link impossible to get wrong. The September 20 failure was Ecamm silently
   assuming `https://` on a pasted URL. The server now prints a hint, but the Copy button on
@@ -52,6 +50,7 @@ The point of this phase is that nothing surprises us live. No new features.
   name.
 - An ad-hoc timer that is not in the rundown. Every live show needs "give me 5 minutes on
   the clock right now" without touching the running order.
+- **Producer override.** Confirmed needed on 2026-09-20. See below.
 
 ### Phase 2 — before it is reachable from outside the room
 
@@ -85,12 +84,30 @@ on. Keep it an optional module that a plain clone never touches.
 Free path that works today: put a display view fullscreen on a second screen and use NDI
 Screen Capture from NDI Tools.
 
+## Producer override
+
+Answered 2026-09-20: **yes, Marielou needs to be able to take transport when Doc is tied up
+in audio.** That changes the model, so it belongs in Phase 1 rather than getting bolted on.
+
+The current design has one correct instinct worth keeping: a producer's edit must never
+yank a running timer by accident. Override is not a hole in that, it is the deliberate
+version of it. The distinction to build is between *an edit that happens to affect the live
+session* and *a person consciously taking the desk*.
+
+Sketch, to be designed properly before any code:
+
+- Roles rather than routes. A person is TD or Producer, and either can hold **the con**.
+- One visible "who has the con" indicator on every operator screen. The failure mode to
+  design against is not two people fighting over the timer, it is both of them thinking the
+  other one has it and nobody starting the next segment.
+- Taking the con is explicit and announced: the other console says so immediately and loudly.
+  Handing it over is a single action. No silent transfer.
+- The pending gate stays exactly as it is for ordinary rundown edits. Override is a separate
+  deliberate act, not a way to skip the queue.
+- Doc can always take it back. He is the TD.
+
 ## Open questions
 
-- Was v0.1 actually used at Card Party Dallas on September 5 and 6? If so, the notes from
-  those two days are worth more than anything in this plan, and Phase 1 should be rewritten
-  around them.
-- Does Marielou want to drive transport at all, or is she strictly building the rundown? The
-  current split assumes the latter. If she ever needs to hit start while Doc is deep in
-  audio, that is a different permission model and should go in Phase 1, not get bolted on
-  later.
+- v0.1 was **not** used at Card Party Dallas (confirmed 2026-09-20), so there are no show
+  notes to fold in. The two-Mac rehearsal in Phase 1 is therefore the first real test this
+  software will ever get, which raises its priority rather than lowering it.

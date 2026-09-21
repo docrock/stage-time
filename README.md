@@ -118,6 +118,38 @@ Clocks that disagree are corrected: each client measures its offset against the 
 connect and every minute after, so two Macs whose clocks differ by eight seconds still
 show the same timer.
 
+## If it crashes
+
+Start it again. That is the whole procedure.
+
+The server writes a snapshot after every change, so a restart picks up where it was: the
+same show file, the same session armed, the timer still running, done-flags and actual
+durations intact, and any producer batch still parked and waiting for you.
+
+A resumed timer keeps the time that passed while the process was dead. That is not a
+rounding error, it is the truth: the show did not pause, and every display has been
+counting down from its cached copy the whole time. Coming back any other way would put the
+server out of step with what the stage can already see.
+
+The banner tells you exactly what it did:
+
+```
+  ↻ Resumed "Interview: KatEmAll & WhosThatPokeMal" still running at 01:55, after 5s down.
+```
+
+Guards, so a snapshot can never surprise you:
+
+- Older than 12 hours and it is ignored. Yesterday's show does not walk back in.
+  Change the window with `--max-resume-age 4`.
+- If the armed session was deleted from the show file while you were down, it is dropped
+  rather than resurrected. The show file wins on what the rundown contains.
+- Writes are atomic, so a crash mid-write cannot leave a half-parsed file that poisons the
+  next boot.
+- `node server.js --fresh` starts clean and ignores whatever is on disk.
+
+An explicit `--show` always wins. A bare `npm start` follows the snapshot, which is what
+you want at 10:15 on a show day: the same command, back where you were.
+
 ## Networking, worst case first
 
 Assume the venue is hostile. In order of how much to trust them live:
