@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 import * as S from './lib/state.js';
 import * as P from './lib/persist.js';
+import * as C from './lib/con.js';
 import { diffSessions, protectedSessionIds } from './lib/diff.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -153,7 +154,22 @@ function saveShow() {
 
 const clients = new Set();
 
+// Presence is simply "has an open stream". No polling, no heartbeat endpoint: the
+// stream drops when a laptop closes or sleeps, which is exactly when we need to know
+// that a console is gone.
+function operators() {
+  const seen = new Map();
+  for (const res of clients) {
+    const c = res.__client;
+    if (!c?.id || !c.operator) continue;
+    // One person with two tabs open is one operator.
+    if (!seen.has(c.id)) seen.set(c.id, { id: c.id, name: c.name, role: c.role, since: c.since });
+  }
+  return [...seen.values()];
+}
+
 function payload() {
+  const ops = operators();
   return {
     serverNow: Date.now(),
     revision: state.revision,
@@ -162,8 +178,22 @@ function payload() {
     timer: state.timer,
     message: state.message,
     pending: state.pending,
+    con: state.con,
+    operators: ops,
+    // Called out separately so no view has to work it out for itself, and so the
+    // empty-chair case is impossible to render by accident as business as usual.
+    conHolderPresent: C.holderPresent(state, ops),
+    conLog: conLog.slice(-6),
     projection: S.projectSchedule(state),
   };
+}
+
+// A short spoken history of the desk, so someone arriving at a console can see what
+// just happened rather than only the current state.
+const conLog = [];
+function logCon(text) {
+  conLog.push({ at: Date.now(), text });
+  if (conLog.length > 20) conLog.shift();
 }
 
 function broadcast() {
@@ -191,6 +221,47 @@ setInterval(() => {
 
 function handleCommand(body) {
   const { action } = body;
+  const client = body.client && body.client.id ? body.client : null;
+
+  // Taking the desk is deliberate and immediate. No request-and-approve: the person
+  // you would be asking has both hands full, which is the whole reason for this.
+  if (action === 'takeCon') {
+    if (!client) return { ok: false, error: 'takeCon needs a client' };
+    const prev = C.take(state, client);
+    logCon(prev ? `${client.name} took the con from ${prev.name}` : `${client.name} took the con`);
+    broadcast();
+    return { ok: true, con: state.con };
+  }
+  if (action === 'releaseCon') {
+    if (C.release(state, client?.id)) {
+      logCon(`${client.name} released the con`);
+      broadcast();
+    }
+    return { ok: true, con: state.con };
+  }
+  if (action === 'handCon') {
+    if (!C.holds(state, client?.id)) return { ok: false, error: 'you do not hold the con' };
+    const target = operators().find((o) => o.id === body.toId);
+    if (!target) return { ok: false, error: 'that console is not connected' };
+    C.take(state, target);
+    logCon(`${client.name} handed the con to ${target.name}`);
+    broadcast();
+    return { ok: true, con: state.con };
+  }
+
+  const auth = C.authorize(state, action, client);
+  if (!auth.ok) {
+    return {
+      ok: false,
+      error: auth.reason,
+      holder: auth.holder,
+      message: auth.reason === 'unidentified'
+        ? `${auth.holder.name} has the con. Identify this console to take it.`
+        : `${auth.holder.name} has the con. Take it first.`,
+    };
+  }
+  if (auth.claimed) logCon(`${client.name} has the con`);
+
   switch (action) {
     case 'select': S.selectSession(state, body.id); break;
     case 'start': S.start(state); break;
@@ -359,9 +430,31 @@ const server = http.createServer(async (req, res) => {
       'cache-control': 'no-cache, no-transform',
       connection: 'keep-alive',
     });
+    // Identity rides on the stream URL so presence and the stream are the same fact.
+    res.__client = {
+      id: url.searchParams.get('id') || null,
+      name: url.searchParams.get('name') || 'Operator',
+      role: url.searchParams.get('role') || 'operator',
+      operator: url.searchParams.get('operator') === '1',
+      since: Date.now(),
+    };
     res.write(`data: ${JSON.stringify(payload())}\n\n`);
     clients.add(res);
-    req.on('close', () => clients.delete(res));
+    // Tell everyone an operator arrived, not only when one leaves. Without this a
+    // returning holder leaves the "their console is gone" alarm standing on the other
+    // screens until someone happens to press a button, and a console is missing from
+    // its own operator list on first paint.
+    if (res.__client.operator && res.__client.id) broadcast();
+    req.on('close', () => {
+      const was = res.__client;
+      clients.delete(res);
+      // Losing the holder's console is the empty-chair case. Say so on every screen
+      // rather than quietly carrying on as if someone were still driving.
+      if (was?.operator && was.id && state.con.holder === was.id) {
+        logCon(`${state.con.name} lost connection while holding the con`);
+      }
+      if (was?.operator) broadcast();
+    });
     return;
   }
 
@@ -394,6 +487,9 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/load' && req.method === 'POST') {
     try {
       const body = await readBody(req);
+      // Loading a show resets the timer, so it belongs to whoever holds the con.
+      const auth = C.authorize(state, 'loadShow', body.client?.id ? body.client : null);
+      if (!auth.ok) return sendJSON(res, { ok: false, error: auth.reason, holder: auth.holder }, 409);
       const name = path.basename(String(body.file || ''));
       loadShow(path.join(SHOWS, name));
       broadcast();

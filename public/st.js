@@ -56,6 +56,37 @@ export const store = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Operator identity. Call before connect() on any console that can drive the show.
+// The id persists so a reload is the same operator rather than a new one appearing
+// and an old one seeming to vanish.
+// ---------------------------------------------------------------------------
+
+const ID_KEY = 'stage-time:client-id';
+
+export let me = null;
+
+export function identify({ name, role }) {
+  let id;
+  try {
+    id = localStorage.getItem(ID_KEY);
+    if (!id) {
+      id = 'op-' + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem(ID_KEY, id);
+    }
+  } catch {
+    // Private mode: a per-load id still works, it just looks like a new console
+    // after every reload.
+    id = 'op-' + Math.random().toString(36).slice(2, 10);
+  }
+  me = { id, name: name || 'Operator', role: role || 'operator' };
+  return me;
+}
+
+export function hasCon(state) {
+  return Boolean(me && state?.con?.holder === me.id);
+}
+
 export function connect() {
   // Show something instantly from cache — and, if the server is dead, keep showing
   // a still-correct countdown rather than a black screen in front of an audience.
@@ -69,7 +100,12 @@ export function connect() {
 
   let es;
   const open = () => {
-    es = new EventSource('/api/stream');
+    // Identity rides on the stream URL: presence and the stream are the same fact, so
+    // a closed laptop stops being a connected operator without any heartbeat plumbing.
+    const q = me
+      ? `?operator=1&id=${encodeURIComponent(me.id)}&name=${encodeURIComponent(me.name)}&role=${encodeURIComponent(me.role)}`
+      : '';
+    es = new EventSource('/api/stream' + q);
     es.onmessage = (e) => {
       store.connected = true;
       store.set(JSON.parse(e.data));
@@ -85,14 +121,20 @@ export function connect() {
   if (store.state) store.emit();
 }
 
+// Returns the server's parsed response so a caller can surface a refusal. A transport
+// command from a console without the con comes back { ok: false, error: 'not-holder' }.
 export async function command(action, extra = {}) {
   try {
-    await fetch('/api/command', {
+    const res = await fetch('/api/command', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action, ...extra }),
+      body: JSON.stringify({ action, client: me || undefined, ...extra }),
     });
-  } catch { /* offline — the operator will see the disconnected badge */ }
+    return await res.json();
+  } catch {
+    // Offline. The operator will see the disconnected badge.
+    return { ok: false, error: 'offline' };
+  }
 }
 
 // ---------------------------------------------------------------------------

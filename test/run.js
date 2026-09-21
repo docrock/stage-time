@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 import * as S from '../lib/state.js';
 import * as P from '../lib/persist.js';
+import * as C from '../lib/con.js';
 import { diffSessions, protectedSessionIds } from '../lib/diff.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -255,6 +256,91 @@ test('an ad-hoc timer with nothing live ends cleanly', () => {
   S.endAdhoc(st);
   assert.equal(st.timer.activeSessionId, null);
   assert.equal(st.timer.isRunning, false);
+});
+
+console.log('\nthe con');
+
+const doc = { id: 'op-doc', name: 'Doc', role: 'td' };
+const mlou = { id: 'op-mlou', name: 'Marielou', role: 'producer' };
+
+test('a solo operator never has to think about it', () => {
+  const st = S.makeState(show());
+  const a = C.authorize(st, 'start', doc);
+  assert.equal(a.ok, true);
+  assert.equal(a.claimed, true, 'an unheld con is claimed by the first person to act');
+  assert.equal(st.con.holder, 'op-doc');
+});
+
+test('a transport command from the other console is refused', () => {
+  const st = S.makeState(show());
+  C.take(st, doc);
+  const a = C.authorize(st, 'start', mlou);
+  assert.equal(a.ok, false);
+  assert.equal(a.reason, 'not-holder');
+  assert.equal(a.holder.name, 'Doc', 'and it says who to go and talk to');
+});
+
+test('the producer can take the desk without asking', () => {
+  const st = S.makeState(show());
+  C.take(st, doc);
+  // No request, no approval. The person she would be asking is mixing audio.
+  const prev = C.take(st, mlou);
+  assert.equal(prev.name, 'Doc', 'we remember who it came from, so we can say so');
+  assert.equal(C.authorize(st, 'start', mlou).ok, true);
+  assert.equal(C.authorize(st, 'start', doc).ok, false, 'and Doc is now the one locked out');
+});
+
+test('Doc can always take it back', () => {
+  const st = S.makeState(show());
+  C.take(st, mlou);
+  C.take(st, doc);
+  assert.equal(C.authorize(st, 'next', doc).ok, true);
+});
+
+test('editing the rundown is never gated by the con', () => {
+  const st = S.makeState(show());
+  C.take(st, doc);
+  // Marielou holds nothing, and must still be able to build the show.
+  for (const action of ['rundown', 'anythingElse']) {
+    assert.equal(C.authorize(st, action, mlou).ok, true);
+  }
+  assert.equal(C.TRANSPORT.has('start'), true);
+  assert.equal(C.TRANSPORT.has('rundown'), false);
+});
+
+test('an unidentified caller is allowed only while nobody holds it', () => {
+  const st = S.makeState(show());
+  assert.equal(C.authorize(st, 'start', null).ok, true, 'curl works on a quiet desk');
+  C.take(st, doc);
+  const a = C.authorize(st, 'start', null);
+  assert.equal(a.ok, false);
+  assert.equal(a.reason, 'unidentified', 'but it cannot clobber a live operator');
+});
+
+test('releasing only works for the person holding it', () => {
+  const st = S.makeState(show());
+  C.take(st, doc);
+  assert.equal(C.release(st, 'op-mlou'), false, 'you cannot release someone else');
+  assert.equal(C.release(st, 'op-doc'), true);
+  assert.equal(C.isHeld(st), false);
+});
+
+test('a holder whose console vanished is reported, not quietly replaced', () => {
+  const st = S.makeState(show());
+  C.take(st, mlou);
+
+  assert.equal(C.holderPresent(st, [{ id: 'op-mlou' }, { id: 'op-doc' }]), true);
+  // She closed her laptop. This is the empty-chair case: the one that is silent and
+  // ruinous if we let it pass, so it has to surface.
+  assert.equal(C.holderPresent(st, [{ id: 'op-doc' }]), false);
+  // And crucially the con did NOT move on its own.
+  assert.equal(st.con.holder, 'op-mlou', 'a desk that reassigns itself is a desk nobody trusts');
+  assert.equal(C.authorize(st, 'start', doc).ok, false, 'Doc still has to take it deliberately');
+});
+
+test('an unheld con is present by definition', () => {
+  const st = S.makeState(show());
+  assert.equal(C.holderPresent(st, []), true, 'nobody missing when nobody is driving');
 });
 
 console.log('\ncrash survival');

@@ -83,6 +83,48 @@ ST.command(action, extra)           // POST /api/command
 from the producer view. The server applies changes that cannot affect the live or next
 session immediately, and parks the rest in `state.pending` for the TD to arm.
 
+## The con (who is driving)
+
+Two people run these shows. Either can hold **the con**: the authority to run transport.
+Rundown editing is NOT affected by it, and the pending gate is unchanged.
+
+State carries:
+
+```js
+con: { holder, name, role, since, takenFrom }   // holder is a client id, or null
+operators: [{ id, name, role, since }]          // consoles with an open stream right now
+conHolderPresent: true                          // false = holder's console is GONE
+conLog: [{ at, text }]                          // recent desk history, newest last
+```
+
+**Identify an operator console** by passing identity on the stream URL. `st.js` does this
+for you when you call `ST.identify({ id, name, role })` BEFORE `ST.connect()`. The id must
+persist in `localStorage` so a reload is the same operator, not a new one.
+
+**Every command from an operator console must carry the client**, which `st.js` attaches
+automatically once you have called `ST.identify`.
+
+Commands: `takeCon`, `releaseCon`, `handCon {toId}`.
+
+Rules the server enforces, which the UI must make legible rather than reinvent:
+
+- Taking is **immediate and confirmed**, never a request. The person you would be asking
+  has both hands full, which is the entire reason this exists.
+- An unheld con is claimed automatically by the first identified operator to act, so a
+  solo operator never thinks about any of this.
+- A transport command from a console that does not hold the con is rejected with
+  `{ ok: false, error: 'not-holder', holder, message }`. `ST.command` returns the parsed
+  response, so you can surface `message` directly.
+- **Nothing is silent.** Every take, hand-off, release and lost connection appends to
+  `conLog`.
+- **No automatic transfer.** If `conHolderPresent` is false, say so loudly and offer one
+  click. Never reassign the desk on your own.
+
+The failure to design against is not two people fighting over the timer. That is loud and
+self-correcting. It is both of them assuming the other has it while a segment runs past
+its wrap, which is silent and ruinous. So the holder is stated permanently on screen, and
+a vanished holder is an alarm, not a footnote.
+
 ## Shared CSS you should reuse
 
 `.st-stage .st-timerbox .st-digits .st-progress .st-top .st-bottom .st-message

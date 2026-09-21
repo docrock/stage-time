@@ -322,6 +322,152 @@
   .share-row input.field { font-family: var(--mono); font-size: 12px; padding: 7px 9px; }
   .share-row .btn { flex: none; padding: 7px 10px; font-size: 12px; }
 
+  /* --- identity gate ------------------------------------------------------ */
+
+  /* A browser prompt() blocks the render loop and cannot be styled, so on a console
+     that may already be showing a live countdown behind it we draw our own card. */
+  .gate {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    background: rgb(4 5 7 / 0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+  }
+  .gate[hidden] { display: none; }
+  .gate .card { width: 100%; max-width: 420px; padding: 20px; }
+  .gate h2 { margin: 0 0 6px; font-size: 19px; }
+  .gate p { margin: 0 0 16px; font-size: 13px; line-height: 1.5; }
+  .gate label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 0 0 5px;
+  }
+  .roles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 18px; }
+  .roles .btn { padding: 12px 8px; opacity: 0.5; }
+  .roles .btn[aria-pressed='true'] { opacity: 1; border-color: var(--accent); }
+  .gate-actions { display: flex; gap: 8px; }
+  .gate-actions .btn { flex: 1; }
+
+  /* The identity chip is deliberately quiet: it is read once a night, not worked. */
+  .whoami {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 5px 11px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .whoami:hover { color: var(--text); }
+
+  /* --- the con bar -------------------------------------------------------- */
+
+  /* Permanent, top of the console, readable from across a loud room. The failure
+     this exists to prevent is both operators assuming the other one is driving, so
+     it is never hidden and never collapses to an icon. */
+  #conbar {
+    flex: none;
+    border-radius: var(--radius);
+    border: 2px solid var(--line);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px 14px;
+    flex-wrap: wrap;
+  }
+  #conbar .headline {
+    font-size: clamp(16px, 2.2vw, 22px);
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    line-height: 1.15;
+  }
+  #conbar .note { font-size: 12px; line-height: 1.4; }
+  #conbar .spacer { flex: 1 1 40px; }
+  #conActions { display: flex; gap: 8px; flex-wrap: wrap; }
+  #conActions[hidden] { display: none; }
+  #conActions .btn { padding: 8px 12px; font-size: 13px; }
+
+  #conbar[data-state='mine'] {
+    border-color: rgb(34 197 94 / 0.6);
+    background: rgb(34 197 94 / 0.1);
+  }
+  #conbar[data-state='mine'] .headline { color: var(--running); }
+
+  #conbar[data-state='theirs'] {
+    border-color: rgb(245 182 10 / 0.6);
+    background: rgb(245 182 10 / 0.1);
+  }
+  #conbar[data-state='theirs'] .headline { color: var(--warning); }
+
+  #conbar[data-state='nobody'] { border-color: var(--line); background: var(--panel); }
+  #conbar[data-state='nobody'] .headline { color: var(--muted); }
+
+  /* The empty chair. Loud on purpose: a vanished holder is an alarm, not a footnote. */
+  #conbar[data-state='gone'] {
+    border-color: var(--danger);
+    background: rgb(239 68 68 / 0.18);
+    animation: con-alarm 1.1s steps(1, end) infinite;
+  }
+  #conbar[data-state='gone'] .headline { color: #fff; }
+  #conbar[data-state='gone'] .note { color: #ffd0d0; }
+  @keyframes con-alarm { 50% { background: rgb(239 68 68 / 0.05); } }
+  @media (prefers-reduced-motion: reduce) { #conbar[data-state='gone'] { animation: none; } }
+
+  #conbar .take { font-size: 15px; padding: 11px 16px; font-weight: 700; }
+
+  /* Inline confirm, same reasoning as the arm confirm below: no browser confirm(). */
+  #conConfirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  #conConfirm[hidden] { display: none; }
+  #conConfirm .q { font-size: 14px; font-weight: 700; }
+
+  #conFlash {
+    flex: 1 1 100%;
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffd873;
+  }
+  #conFlash:empty { display: none; }
+
+  /* --- who is at the desk -------------------------------------------------- */
+
+  .oplist { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  .op {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    padding: 6px 9px;
+    border-radius: 8px;
+    background: var(--panel-2);
+  }
+  .op .nm { flex: 1; font-weight: 600; }
+  .op[data-holder='true'] { box-shadow: 0 0 0 1px rgb(34 197 94 / 0.55) inset; }
+
+  .conlog { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+  .conlog .ln { display: flex; gap: 8px; line-height: 1.4; }
+  .conlog .ln .t { color: var(--dim); font-family: var(--mono); flex: none; }
+  .conlog .ln .x { color: var(--muted); }
+  .conlog .ln:last-child .x { color: var(--text); }
+
+  /* Why a dead button is dead. Stated once near the controls rather than as a
+     tooltip on each one, because nobody hovers anything during a show. */
+  .lock-note {
+    margin-top: 9px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--warning);
+    line-height: 1.4;
+  }
+  .lock-note[hidden] { display: none; }
+
   /* --- phone ------------------------------------------------------------- */
 
   /* Doc runs this from his pocket when he is away from the desk, so the single
@@ -338,12 +484,58 @@
     .transport .btn { padding: 20px 8px; }
     .nudge .btn { padding: 16px 2px; }
     .keys { display: none; }
+    /* The con bar keeps its size on a phone. It is the one thing Doc must be able to
+       read at arm's length while he is across the room from the desk. */
+    #conbar { padding: 12px; }
+    #conbar .headline { font-size: 18px; }
+    #conActions { width: 100%; }
+    #conActions .btn { flex: 1 1 120px; padding: 12px 10px; }
   }
 </style>
 </head>
 <body>
 
+<!-- Identity. Shown before the stream opens when this console has never said who it
+     is, because a console that cannot be named cannot be handed the con. -->
+<div class="gate" id="gate" hidden>
+  <div class="card">
+    <h2 id="gateTitle">Who is at this console?</h2>
+    <p class="muted" id="gateWhy">
+      Two people can drive this show. Your name is what the other console sees when the
+      con moves, so make it the name they would say out loud.
+    </p>
+    <label for="gateName">Name</label>
+    <input class="field" id="gateName" type="text" placeholder="Doc" autocomplete="off">
+    <div class="roles" id="gateRoles">
+      <button class="btn" type="button" data-role="TD" aria-pressed="true">TD</button>
+      <button class="btn" type="button" data-role="Producer" aria-pressed="false">Producer</button>
+    </div>
+    <div class="gate-actions">
+      <button class="btn primary" id="gateGo">Continue</button>
+      <button class="btn ghost" id="gateCancel" hidden>Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="app">
+
+  <!-- The con bar. Above the pending banner because who is driving outranks what is
+       waiting to be armed, and permanent because its whole job is to stop both
+       operators assuming the other one has the desk. -->
+  <div id="conbar" class="card" data-state="nobody" role="status" aria-live="polite">
+    <div>
+      <div class="headline" id="conHeadline">NOBODY HAS THE CON</div>
+      <div class="note muted" id="conNote">The first action taken here claims it.</div>
+    </div>
+    <span class="spacer"></span>
+    <div id="conActions"></div>
+    <div id="conConfirm" hidden>
+      <span class="q" id="conConfirmQ">Take the con?</span>
+      <button class="btn danger" id="conConfirmYes" type="button">Take</button>
+      <button class="btn ghost" id="conConfirmNo" type="button">Cancel</button>
+    </div>
+    <div id="conFlash"></div>
+  </div>
 
   <!-- Pending change gate. Rendered first in the DOM so it is the first thing seen
        and the first thing a screen reader reaches. -->
@@ -366,6 +558,7 @@
     <span class="muted" id="showSub" style="font-size:13px"></span>
     <span class="spacer"></span>
     <span class="mono muted" id="wallClock" style="font-size:13px"></span>
+    <button class="whoami" id="whoami" type="button" title="Change your name or role">Identify</button>
     <span class="conn" id="conn" data-on="false"><span class="dot"></span><span id="connText">CONNECTING</span></span>
   </div>
 
@@ -402,6 +595,7 @@
           <button class="btn" id="btnReset">Reset</button>
           <button class="btn" id="btnNext">Next</button>
         </div>
+        <div class="lock-note" id="lockTransport" hidden></div>
       </div>
 
       <div class="card panel">
@@ -459,6 +653,15 @@
 
     <!-- ---------------- RIGHT: messages and sharing ---------------- -->
     <div class="col" id="colRight">
+      <!-- Detail behind the con bar: who is actually on the desk, and what has
+           happened to it recently. Someone walking up to a console mid-show needs
+           the history, not only the current state. -->
+      <div class="card panel">
+        <h2>At the desk</h2>
+        <div class="oplist" id="oplist"></div>
+        <div class="conlog" id="conlog"></div>
+      </div>
+
       <div class="card panel">
         <h2>Message to stage</h2>
         <input class="field" id="msgText" type="text" placeholder="Type a message for the presenter" autocomplete="off">
@@ -478,6 +681,10 @@
           <button class="btn" id="btnClearMsg">Clear</button>
         </div>
         <div id="liveMsg"></div>
+        <!-- Repeated here rather than only under the transport: on a phone these two
+             panels are a long scroll apart, and a dead Send with no reason is the
+             thing that makes an operator hammer the button. -->
+        <div class="lock-note" id="lockMsg" hidden></div>
       </div>
 
       <div class="card panel">
@@ -532,6 +739,310 @@ const el = (tag, cls, text) => {
 function digitsHTML(seconds) {
   const s = ST.fmtClock(seconds);
   return s.replace(/:/g, '<span class="colon">:</span>');
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+//
+// The con is worthless if a console cannot be named: "MARIELOU HAS THE CON" is
+// useful, "op-4f2a1c HAS THE CON" is not. So we ask once, remember it, and call
+// ST.identify before the stream opens, because identity rides on the stream URL.
+// ---------------------------------------------------------------------------
+
+const NAME_KEY = 'stage-time:op-name';
+const ROLE_KEY = 'stage-time:op-role';
+
+function storedIdentity() {
+  try {
+    const name = localStorage.getItem(NAME_KEY);
+    const role = localStorage.getItem(ROLE_KEY);
+    return name ? { name, role: role || 'TD' } : null;
+  } catch {
+    return null; // private mode: we will ask every load, which is honest enough
+  }
+}
+
+let gateRole = 'TD';
+let gateMode = 'first'; // 'first' = before connect, 'edit' = changing it later
+
+function setGateRole(role) {
+  gateRole = role;
+  for (const b of $('gateRoles').querySelectorAll('button')) {
+    b.setAttribute('aria-pressed', String(b.dataset.role === role));
+  }
+}
+
+for (const b of $('gateRoles').querySelectorAll('button')) {
+  b.addEventListener('click', () => setGateRole(b.dataset.role));
+}
+
+function openGate(mode) {
+  gateMode = mode;
+  const saved = storedIdentity();
+  $('gateName').value = saved?.name || '';
+  setGateRole(saved?.role || 'TD');
+  $('gateTitle').textContent = mode === 'edit' ? 'Change who is at this console' : 'Who is at this console?';
+  $('gateWhy').textContent = mode === 'edit'
+    ? 'This console keeps its identity, so the other desk sees the new name straight away. The page reloads to reconnect the stream under it.'
+    : 'Two people can drive this show. Your name is what the other console sees when the con moves, so make it the name they would say out loud.';
+  $('gateCancel').hidden = mode !== 'edit';
+  $('gate').hidden = false;
+  $('gateName').focus();
+  $('gateName').select();
+}
+
+function closeGate() { $('gate').hidden = true; }
+
+function saveGate() {
+  const name = $('gateName').value.trim() || (gateRole === 'Producer' ? 'Producer' : 'TD');
+  try {
+    localStorage.setItem(NAME_KEY, name);
+    localStorage.setItem(ROLE_KEY, gateRole);
+  } catch { /* private mode: this session still works, it just forgets */ }
+  closeGate();
+  if (gateMode === 'first') {
+    startStream({ name, role: gateRole });
+  } else {
+    // The stream URL carries the name, and st.js opens exactly one stream, so a
+    // reload is the honest way to reconnect under the new identity. Nothing on this
+    // console is unsaved, unlike the rundown view.
+    location.reload();
+  }
+}
+
+$('gateGo').addEventListener('click', saveGate);
+$('gateCancel').addEventListener('click', closeGate);
+$('gateName').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); saveGate(); }
+});
+$('whoami').addEventListener('click', () => openGate('edit'));
+
+function paintWhoami() {
+  const m = ST.me;
+  $('whoami').textContent = m ? `${m.name} · ${m.role}` : 'Identify';
+}
+
+// ---------------------------------------------------------------------------
+// The con
+// ---------------------------------------------------------------------------
+
+// Brief, self-clearing line inside the con bar. Used for server refusals and for
+// explaining a click that could not land, so nothing ever fails in silence.
+let flashTimer = null;
+function flash(text) {
+  $('conFlash').textContent = text;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { $('conFlash').textContent = ''; }, 5000);
+}
+
+// Every command goes through here so a refusal is shown rather than swallowed.
+async function cmd(action, extra) {
+  const res = await ST.command(action, extra);
+  if (res && res.ok === false) {
+    flash(res.error === 'offline'
+      ? 'No connection to the show server. That did not land.'
+      : res.message || res.error || 'The server refused that.');
+  }
+  return res;
+}
+
+function conHolderName(state) {
+  return state?.con?.name || 'Someone';
+}
+
+// mine | theirs | gone | nobody
+function conState(state) {
+  if (!state?.con?.holder) return 'nobody';
+  if (ST.hasCon(state)) return 'mine';
+  return state.conHolderPresent === false ? 'gone' : 'theirs';
+}
+
+// Locked means transport is off here. An unheld con is NOT locked: acting claims it,
+// which is what keeps a solo operator from ever having to think about any of this.
+function isLocked() {
+  const s = conState(ST.store.state);
+  return s === 'theirs' || s === 'gone';
+}
+
+let pendingTake = null; // the name we are asking about, or null
+
+function askTake(state) {
+  pendingTake = conHolderName(state);
+  $('conConfirmQ').textContent = `Take the con from ${pendingTake}?`;
+  $('conConfirm').hidden = false;
+  $('conActions').hidden = true;
+  $('conConfirmYes').focus();
+}
+
+function cancelTake() {
+  pendingTake = null;
+  $('conConfirm').hidden = true;
+  $('conActions').hidden = false;
+}
+
+$('conConfirmYes').addEventListener('click', async () => {
+  cancelTake();
+  const res = await cmd('takeCon');
+  if (res?.ok) flash('You have the con.');
+});
+$('conConfirmNo').addEventListener('click', cancelTake);
+
+// Rebuilt only when the shape of the bar actually changes, not on every push.
+let conKey = null;
+
+function paintCon(state) {
+  const bar = $('conbar');
+  const st = conState(state);
+  const holder = conHolderName(state);
+  const others = (state?.operators || []).filter((o) => o.id !== ST.me?.id);
+  const key = [st, state?.con?.holder, holder, others.map((o) => o.id + o.name).join('|')].join('~');
+  if (key === conKey) return;
+  conKey = key;
+
+  bar.dataset.state = st;
+
+  // A take confirm aimed at a situation that has already moved on is worse than
+  // useless, so drop it whenever the bar changes underneath it.
+  if (pendingTake) cancelTake();
+
+  const actions = $('conActions');
+  actions.textContent = '';
+
+  if (st === 'mine') {
+    $('conHeadline').textContent = 'YOU HAVE THE CON';
+    $('conNote').textContent = others.length
+      ? 'Hand it over before you step away from the desk.'
+      : 'You are the only console connected.';
+    for (const o of others) {
+      const b = el('button', 'btn', `Hand to ${o.name}`);
+      b.type = 'button';
+      b.addEventListener('click', async () => {
+        const res = await cmd('handCon', { toId: o.id });
+        if (res?.ok) flash(`${o.name} has the con now.`);
+      });
+      actions.append(b);
+    }
+    const rel = el('button', 'btn ghost', 'Release');
+    rel.type = 'button';
+    rel.title = 'Leave the con unheld. The next console to act claims it.';
+    rel.addEventListener('click', async () => {
+      const res = await cmd('releaseCon');
+      if (res?.ok) flash('Con released. The next console to act claims it.');
+    });
+    actions.append(rel);
+  } else if (st === 'theirs') {
+    $('conHeadline').textContent = `${holder.toUpperCase()} HAS THE CON`;
+    $('conNote').textContent = 'Their console is connected. Transport is off here.';
+    const b = el('button', 'btn warn take', 'Take the con');
+    b.type = 'button';
+    b.addEventListener('click', () => askTake(ST.store.state));
+    actions.append(b);
+  } else if (st === 'gone') {
+    // The whole feature exists for this line. Never take the desk automatically:
+    // say it loudly, and offer the one click.
+    $('conHeadline').textContent = `${holder.toUpperCase()} HAS THE CON BUT THAT CONSOLE IS GONE`;
+    $('conNote').textContent = 'Nobody is driving. Nothing will move until someone takes it.';
+    const b = el('button', 'btn danger take', 'Take the con');
+    b.type = 'button';
+    b.addEventListener('click', () => askTake(ST.store.state));
+    actions.append(b);
+  } else {
+    $('conHeadline').textContent = 'NOBODY HAS THE CON';
+    $('conNote').textContent = 'The next action from this console claims it.';
+  }
+}
+
+// The server pushes when a console disappears, but a console arriving does not push
+// to anyone else, so a holder who reconnects would leave this alarm on screen until
+// the next command from somebody. An alarm that stays up after it stops being true
+// is an alarm people learn to ignore, and this is the one alarm that matters. So
+// while it is showing, and only while it is showing, we re-read the state ourselves.
+// This never takes the desk. It only stops us shouting about a chair that is filled.
+//
+// The same ordering means our own console is missing from the operator list in the
+// very first payload we are handed, so we re-read for that too. Both settle on the
+// next push from anyone; this just stops them being wrong in the meantime.
+function needsReread(state) {
+  if (!state) return false;
+  if (conState(state) === 'gone') return true;
+  return Boolean(ST.me) && !(state.operators || []).some((o) => o.id === ST.me.id);
+}
+
+setInterval(async () => {
+  const state = ST.store.state;
+  if (!needsReread(state)) return;
+  try {
+    const r = await fetch('/api/state', { cache: 'no-store' });
+    // Whatever comes back is newer than what we are holding, so take it either way.
+    ST.store.set(await r.json());
+  } catch { /* offline, and the OFFLINE badge already says so */ }
+}, 3000);
+
+// Who is here, and what just happened to the desk.
+let deskKey = null;
+
+function paintDesk(state) {
+  const ops = state?.operators || [];
+  const log = state?.conLog || [];
+  const key = ops.map((o) => `${o.id}:${o.name}:${o.role}`).join('|')
+    + '~' + state?.con?.holder + '~' + log.length + '~' + (log[log.length - 1]?.at || 0);
+  if (key === deskKey) return;
+  deskKey = key;
+
+  const host = $('oplist');
+  host.textContent = '';
+  if (!ops.length) {
+    host.append(el('div', 'muted', 'No operator consoles connected.'));
+  }
+  for (const o of ops) {
+    const row = el('div', 'op');
+    row.dataset.holder = String(state?.con?.holder === o.id);
+    row.append(el('span', 'nm', o.name));
+    row.append(el('span', 'muted', o.role));
+    if (state?.con?.holder === o.id) row.append(el('span', 'pill live', 'con'));
+    if (o.id === ST.me?.id) row.append(el('span', 'pill next', 'you'));
+    host.append(row);
+  }
+
+  const lg = $('conlog');
+  lg.textContent = '';
+  for (const entry of log.slice(-5)) {
+    const ln = el('div', 'ln');
+    ln.append(el('span', 't', ST.fmtTimeOfDay(entry.at)), el('span', 'x', entry.text));
+    lg.append(ln);
+  }
+}
+
+// Everything the con protects, gathered in one place so nothing is forgotten when
+// a new button appears. Disabling is not enough on its own: the notes say why.
+function gatedControls() {
+  return [
+    $('btnToggle'), $('btnReset'), $('btnNext'), $('btnEndAdhoc'),
+    $('btnSend'), $('btnClearMsg'), $('btnLoadShow'),
+    $('pendApply'), $('pendReject'),
+    ...$('nudge').querySelectorAll('button'),
+    ...$('toggles').querySelectorAll('button'),
+    ...$('adhocGrid').querySelectorAll('button'),
+    ...$('presets').querySelectorAll('button'),
+  ];
+}
+
+let lockKey = null;
+
+function paintLock(state) {
+  const locked = isLocked();
+  // Keyed on the holder too: staying locked while the holder changes still needs
+  // the note rewritten, or it names the wrong person.
+  const key = `${locked}~${state?.con?.holder}~${conHolderName(state)}`;
+  if (key === lockKey) return;
+  lockKey = key;
+  for (const b of gatedControls()) if (b) b.disabled = locked;
+  const why = `${conHolderName(state)} has the con.`;
+  for (const id of ['lockTransport', 'lockMsg']) {
+    const n = $(id);
+    n.hidden = !locked;
+    n.textContent = locked ? `${why} Take it above to drive.` : '';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -649,7 +1160,7 @@ function buildRundown(state) {
       e.stopPropagation();
       armingId = null;
       row.dataset.arming = 'false';
-      ST.command('select', { id: s.id });
+      cmd('select', { id: s.id });
     });
     no.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -660,10 +1171,16 @@ function buildRundown(state) {
     row.append(conf);
 
     row.addEventListener('click', () => {
+      // The list stays readable without the con, so a click here explains itself
+      // rather than doing nothing and leaving Doc clicking harder.
+      if (isLocked()) {
+        flash(`${conHolderName(ST.store.state)} has the con. Take it to arm a session.`);
+        return;
+      }
       const running = !!ST.store.state?.timer?.isRunning;
       if (!running) {
         armingId = null;
-        ST.command('select', { id: s.id });
+        cmd('select', { id: s.id });
         return;
       }
       // Selecting during a live segment wipes the running clock, so make Doc say so
@@ -714,7 +1231,7 @@ const toggleEls = new Map();
     b.dataset.key = key;
     b.dataset.on = 'false';
     b.append(el('span', 'led'), el('span', null, label));
-    b.addEventListener('click', () => ST.command('toggleOption', { key }));
+    b.addEventListener('click', () => cmd('toggleOption', { key }));
     host.append(b);
     toggleEls.set(key, b);
   }
@@ -724,9 +1241,9 @@ const toggleEls = new Map();
 // Transport
 // ---------------------------------------------------------------------------
 
-$('btnToggle').addEventListener('click', () => ST.command('toggle'));
-$('btnReset').addEventListener('click', () => ST.command('reset'));
-$('btnNext').addEventListener('click', () => ST.command('next'));
+$('btnToggle').addEventListener('click', () => cmd('toggle'));
+$('btnReset').addEventListener('click', () => cmd('reset'));
+$('btnNext').addEventListener('click', () => cmd('next'));
 
 // Ad-hoc timer. The label box is optional; an empty one gets a sensible default
 // server-side, because the moment you need this you are not in the mood to type.
@@ -734,17 +1251,17 @@ for (const b of $('adhocGrid').querySelectorAll('button')) {
   b.addEventListener('click', () => {
     const title = $('adhocLabel').value.trim();
     if (b.dataset.mode === 'countup') {
-      ST.command('adhoc', { seconds: 1, mode: 'countup', title: title || 'Running' });
+      cmd('adhoc', { seconds: 1, mode: 'countup', title: title || 'Running' });
     } else {
-      ST.command('adhoc', { seconds: Number(b.dataset.sec), title: title || undefined });
+      cmd('adhoc', { seconds: Number(b.dataset.sec), title: title || undefined });
     }
     $('adhocLabel').value = '';
   });
 }
-$('btnEndAdhoc').addEventListener('click', () => ST.command('endAdhoc'));
+$('btnEndAdhoc').addEventListener('click', () => cmd('endAdhoc'));
 
 for (const b of $('nudge').querySelectorAll('button')) {
-  b.addEventListener('click', () => ST.command('adjust', { seconds: Number(b.dataset.sec) }));
+  b.addEventListener('click', () => cmd('adjust', { seconds: Number(b.dataset.sec) }));
 }
 
 // ---------------------------------------------------------------------------
@@ -777,12 +1294,12 @@ for (const b of hideBtns) {
 $('btnSend').addEventListener('click', () => {
   const text = $('msgText').value.trim();
   if (!text) return;
-  ST.command('message', { text, level: msgLevel, seconds: msgSeconds });
+  cmd('message', { text, level: msgLevel, seconds: msgSeconds });
 });
 
 $('btnClearMsg').addEventListener('click', () => {
   $('msgText').value = '';
-  ST.command('clearMessage');
+  cmd('clearMessage');
 });
 
 $('msgText').addEventListener('keydown', (e) => {
@@ -793,7 +1310,7 @@ $('msgText').addEventListener('keydown', (e) => {
 // no confirm step: sending the wrong cue card is cheap, sending it late is not.
 for (const b of $('presets').querySelectorAll('button')) {
   b.addEventListener('click', () => {
-    ST.command('message', { text: b.dataset.text, level: b.dataset.level, seconds: msgSeconds });
+    cmd('message', { text: b.dataset.text, level: b.dataset.level, seconds: msgSeconds });
   });
 }
 
@@ -801,8 +1318,8 @@ for (const b of $('presets').querySelectorAll('button')) {
 // Pending gate
 // ---------------------------------------------------------------------------
 
-$('pendApply').addEventListener('click', () => ST.command('acceptPending'));
-$('pendReject').addEventListener('click', () => ST.command('rejectPending'));
+$('pendApply').addEventListener('click', () => cmd('acceptPending'));
+$('pendReject').addEventListener('click', () => cmd('rejectPending'));
 
 let pendingStamp = null; // avoid rebuilding the list on every state push
 
@@ -888,7 +1405,9 @@ async function loadShowList() {
       return;
     }
     picker.disabled = false;
-    $('btnLoadShow').disabled = false;
+    // Honour the con here too, or this button quietly re-enables itself every time
+    // the list is refreshed.
+    $('btnLoadShow').disabled = isLocked();
     for (const f of files) {
       const o = el('option', null, f + (f === current ? '  (loaded)' : ''));
       o.value = f;
@@ -912,10 +1431,19 @@ $('btnLoadShow').addEventListener('click', async () => {
     const r = await fetch('/api/load', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ file }),
+      // Loading a show resets the timer, so the server checks the con on this route
+      // too. It needs the client to know whether this console is allowed to.
+      body: JSON.stringify({ file, client: ST.me || undefined }),
     });
     const j = await r.json();
-    $('showMsg').textContent = j.ok ? `Loaded ${file}.` : `Could not load: ${j.error || 'unknown error'}`;
+    if (j.ok) {
+      $('showMsg').textContent = `Loaded ${file}.`;
+    } else {
+      const why = j.error === 'not-holder'
+        ? `${j.holder?.name || 'Someone else'} has the con. Take it first.`
+        : (j.error || 'unknown error');
+      $('showMsg').textContent = `Could not load: ${why}`;
+    }
   } catch (e) {
     $('showMsg').textContent = `Could not load: ${e.message}`;
   }
@@ -935,17 +1463,32 @@ document.addEventListener('keydown', (e) => {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
 
+  // Escape is never gated: it backs out of a half-made decision, which has to work
+  // whoever is driving.
+  if (e.key === 'Escape') {
+    if (pendingTake) { cancelTake(); return; }
+    armingId = null;
+    for (const r of $('rows').children) r.dataset.arming = 'false';
+    return;
+  }
+
+  // Space is the most dangerous key on this page. Without the con it must do
+  // nothing at all, and say so, rather than firing a command the server will bounce.
+  if (isLocked()) {
+    if ([' ', 'n', 'N', 'r', 'R', 'ArrowUp', 'ArrowDown', 'b', 'B'].includes(e.key)) {
+      e.preventDefault();
+      flash(`${conHolderName(ST.store.state)} has the con. Shortcuts are off here.`);
+    }
+    return;
+  }
+
   switch (e.key) {
-    case ' ': e.preventDefault(); ST.command('toggle'); break;
-    case 'n': case 'N': ST.command('next'); break;
-    case 'r': case 'R': ST.command('reset'); break;
-    case 'ArrowUp': e.preventDefault(); ST.command('adjust', { seconds: 60 }); break;
-    case 'ArrowDown': e.preventDefault(); ST.command('adjust', { seconds: -60 }); break;
-    case 'b': case 'B': ST.command('toggleOption', { key: 'blackout' }); break;
-    case 'Escape': // bail out of a half-made arm decision
-      armingId = null;
-      for (const r of $('rows').children) r.dataset.arming = 'false';
-      break;
+    case ' ': e.preventDefault(); cmd('toggle'); break;
+    case 'n': case 'N': cmd('next'); break;
+    case 'r': case 'R': cmd('reset'); break;
+    case 'ArrowUp': e.preventDefault(); cmd('adjust', { seconds: 60 }); break;
+    case 'ArrowDown': e.preventDefault(); cmd('adjust', { seconds: -60 }); break;
+    case 'b': case 'B': cmd('toggleOption', { key: 'blackout' }); break;
   }
 });
 
@@ -1002,10 +1545,26 @@ function onState(state, isConnected) {
   }
 
   paintPending(state);
+  paintCon(state);
+  paintDesk(state);
+  paintLock(state);
 }
 
 ST.store.on(onState);
-ST.connect();
+
+// Identify before connect: identity rides on the stream URL, so a console that
+// connects first would appear as a nameless operator until it reloaded.
+function startStream(identity) {
+  ST.identify(identity);
+  paintWhoami();
+  ST.connect();
+}
+
+(function boot() {
+  const saved = storedIdentity();
+  if (saved) startStream(saved);
+  else openGate('first');
+})();
 
 // Everything time dependent repaints on the animation frame, using ST.now() so two
 // machines with different system clocks still agree.

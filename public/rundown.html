@@ -276,6 +276,85 @@
   .sheet li.a { border-left: 3px solid var(--running); }
   .sheet .grouphead { font-size: 13px; font-weight: 700; margin-top: 4px; }
 
+  /* --- identity gate ------------------------------------------------------ */
+
+  /* Same reasoning as the control console: a browser prompt() cannot be styled and
+     blocks the page, and this one may open over a rundown she is midway through. */
+  .gate {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    background: rgb(4 5 7 / 0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+  }
+  .gate[hidden] { display: none; }
+  .gate .panel { width: 100%; max-width: 420px; padding: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+  .gate h2 { margin: 0 0 6px; font-size: 19px; }
+  .gate p { margin: 0 0 16px; font-size: 13px; line-height: 1.5; }
+  .gate label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 0 0 5px;
+  }
+  .roles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 18px; }
+  .roles .btn { padding: 12px 8px; opacity: 0.5; }
+  .roles .btn[aria-pressed='true'] { opacity: 1; border-color: var(--accent); }
+  .gate-actions { display: flex; gap: 8px; }
+  .gate-actions .btn { flex: 1; }
+
+  .whoami {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 5px 11px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .whoami:hover { color: var(--text); }
+
+  /* --- con indicator ------------------------------------------------------ */
+
+  /* Compact here, not a full bar: she does not drive the transport from this page.
+     It still has to answer "is anyone driving" without her asking Doc across a room. */
+  #conmini {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 6px 5px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  #conmini .who { color: var(--muted); }
+  #conmini .btn { padding: 5px 10px; font-size: 12px; }
+  #conmini[data-state='mine'] { border-color: rgb(34 197 94 / 0.6); background: rgb(34 197 94 / 0.12); }
+  #conmini[data-state='mine'] .who { color: var(--running); }
+  #conmini[data-state='theirs'] { border-color: rgb(245 182 10 / 0.5); }
+  #conmini[data-state='theirs'] .who { color: var(--warning); }
+  #conmini[data-state='nobody'] .who { color: var(--muted); }
+  #conmini[data-state='gone'] {
+    border-color: var(--danger);
+    background: rgb(239 68 68 / 0.2);
+    border-radius: 12px;
+    animation: con-alarm 1.1s steps(1, end) infinite;
+  }
+  #conmini[data-state='gone'] .who { color: #fff; }
+  @keyframes con-alarm { 50% { background: rgb(239 68 68 / 0.05); } }
+  @media (prefers-reduced-motion: reduce) { #conmini[data-state='gone'] { animation: none; } }
+  #conmini .say { font-weight: 600; letter-spacing: 0; color: var(--muted); }
+
   .hidden { display: none !important; }
 
   .empty { padding: 34px 18px; text-align: center; }
@@ -293,6 +372,26 @@
 
 <div id="offline" class="st-offline hidden">OFFLINE</div>
 
+<div class="gate" id="gate" hidden>
+  <div class="panel">
+    <h2 id="gateTitle">Who is at this console?</h2>
+    <p class="muted" id="gateWhy">
+      Your name is what Doc's console shows when the con moves, so make it the name he
+      would say out loud.
+    </p>
+    <label for="gateName">Name</label>
+    <input class="field" id="gateName" type="text" placeholder="Marielou" autocomplete="off" />
+    <div class="roles" id="gateRoles">
+      <button class="btn" type="button" data-role="Producer" aria-pressed="true">Producer</button>
+      <button class="btn" type="button" data-role="TD" aria-pressed="false">TD</button>
+    </div>
+    <div class="gate-actions">
+      <button class="btn primary" id="gateGo">Continue</button>
+      <button class="btn ghost" id="gateCancel" hidden>Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
   <header class="bar">
     <div>
@@ -300,6 +399,21 @@
       <div class="showname muted" id="showname">Loading</div>
     </div>
     <div class="spacer"></div>
+
+    <!-- Who is driving the transport. Editing here is never gated by the con, but
+         she still needs to know whether anyone is on the desk at all. -->
+    <div id="conmini" data-state="nobody" role="status" aria-live="polite">
+      <span class="who" id="conWho">NOBODY HAS THE CON</span>
+      <span class="say" id="conSay" hidden></span>
+      <span id="conActions"></span>
+      <span id="conConfirm" hidden>
+        <span class="say" id="conConfirmQ"></span>
+        <button class="btn danger" id="conConfirmYes" type="button">Take</button>
+        <button class="btn ghost" id="conConfirmNo" type="button">Cancel</button>
+      </span>
+    </div>
+
+    <button class="whoami" id="whoami" type="button" title="Change your name or role">Identify</button>
     <input id="who" class="field who" placeholder="Your name" aria-label="Your name" />
     <div class="savestate" id="savestate" data-dirty="false">Saved</div>
     <button class="btn primary" id="saveTop">Save</button>
@@ -1006,6 +1120,206 @@ $('who').addEventListener('change', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Identity
+//
+// The con is only legible if a console can be named, so we ask once and call
+// ST.identify before the stream opens: identity rides on the stream URL.
+// ---------------------------------------------------------------------------
+
+const OP_NAME_KEY = 'stage-time:op-name';
+const OP_ROLE_KEY = 'stage-time:op-role';
+
+function storedIdentity() {
+  try {
+    const name = localStorage.getItem(OP_NAME_KEY);
+    const role = localStorage.getItem(OP_ROLE_KEY);
+    return name ? { name, role: role || 'Producer' } : null;
+  } catch {
+    return null;
+  }
+}
+
+let gateRole = 'Producer';
+let gateMode = 'first';
+
+function setGateRole(role) {
+  gateRole = role;
+  for (const b of $('gateRoles').querySelectorAll('button')) {
+    b.setAttribute('aria-pressed', String(b.dataset.role === role));
+  }
+}
+
+for (const b of $('gateRoles').querySelectorAll('button')) {
+  b.addEventListener('click', () => setGateRole(b.dataset.role));
+}
+
+function openGate(mode) {
+  gateMode = mode;
+  const saved = storedIdentity();
+  $('gateName').value = saved?.name || $('who').value.trim() || '';
+  setGateRole(saved?.role || 'Producer');
+  $('gateTitle').textContent = mode === 'edit' ? 'Change who is at this console' : 'Who is at this console?';
+  $('gateCancel').hidden = mode !== 'edit';
+  $('gate').hidden = false;
+  $('gateName').focus();
+  $('gateName').select();
+}
+
+function closeGate() { $('gate').hidden = true; }
+
+function saveGate() {
+  const name = $('gateName').value.trim() || gateRole;
+  try {
+    localStorage.setItem(OP_NAME_KEY, name);
+    localStorage.setItem(OP_ROLE_KEY, gateRole);
+    localStorage.setItem(NAME_KEY, name);
+  } catch { /* private mode */ }
+  // Keep the "submitted by" label in step, so Doc's pending banner says the same
+  // name his con bar does.
+  $('who').value = name;
+  closeGate();
+  if (gateMode === 'first') {
+    startStream({ name, role: gateRole });
+  } else if (dirty) {
+    // A reload is how the stream picks up a new name, and a reload would put her
+    // unsaved rundown at the mercy of a browser dialog. Her edits win.
+    $('banners').prepend(banner('stale', 'Name saved, but the show server still sees the old one',
+      'Reconnecting under a new name needs a page reload, and you have unsaved edits. Save or discard them, then reload when you are ready.'));
+  } else {
+    location.reload();
+  }
+}
+
+$('gateGo').addEventListener('click', saveGate);
+$('gateCancel').addEventListener('click', closeGate);
+$('gateName').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); saveGate(); }
+});
+$('whoami').addEventListener('click', () => openGate('edit'));
+
+function paintWhoami() {
+  $('whoami').textContent = ST.me ? `${ST.me.name} · ${ST.me.role}` : 'Identify';
+}
+
+// ---------------------------------------------------------------------------
+// The con indicator
+// ---------------------------------------------------------------------------
+
+function conHolderName(state) { return state?.con?.name || 'Someone'; }
+
+function conState(state) {
+  if (!state?.con?.holder) return 'nobody';
+  if (ST.hasCon(state)) return 'mine';
+  return state.conHolderPresent === false ? 'gone' : 'theirs';
+}
+
+// The server pushes when a console disappears, but a console arriving does not push
+// to anyone else, so a holder who reconnects would leave this alarm on screen until
+// the next command from somebody. An alarm that outlives the thing it warns about is
+// one people learn to ignore, so while it is showing we re-read the state ourselves.
+// This never takes the desk, it only stops us shouting about a chair that is filled.
+//
+// The same ordering leaves our own console out of the operator list in the very first
+// payload we are handed, so we re-read for that too. Both settle on the next push from
+// anyone; this only stops them being wrong in the meantime. Her working copy is never
+// touched by this: the stream listener below already refuses to overwrite unsaved work.
+function needsReread(state) {
+  if (!state) return false;
+  if (conState(state) === 'gone') return true;
+  return Boolean(ST.me) && !(state.operators || []).some((o) => o.id === ST.me.id);
+}
+
+setInterval(async () => {
+  if (!needsReread(serverState)) return;
+  try {
+    const r = await fetch('/api/state', { cache: 'no-store' });
+    ST.store.set(await r.json());
+  } catch { /* offline, and the OFFLINE badge already says so */ }
+}, 3000);
+
+let pendingTake = false;
+
+function askTake() {
+  pendingTake = true;
+  $('conConfirmQ').textContent = `Take the con from ${conHolderName(serverState)}?`;
+  $('conConfirm').hidden = false;
+  $('conActions').hidden = true;
+  $('conConfirmYes').focus();
+}
+
+function cancelTake() {
+  pendingTake = false;
+  $('conConfirm').hidden = true;
+  $('conActions').hidden = false;
+}
+
+$('conConfirmNo').addEventListener('click', cancelTake);
+$('conConfirmYes').addEventListener('click', async () => {
+  cancelTake();
+  const res = await ST.command('takeCon');
+  if (res?.ok === false) {
+    $('conSay').hidden = false;
+    $('conSay').textContent = res.message || res.error || 'That did not land.';
+    return;
+  }
+  // Taking never navigates. She may be halfway through a rundown edit, and the
+  // transport lives on another page, so we offer the door rather than walking her
+  // through it.
+  conKey = null;
+  paintCon(serverState);
+});
+
+let conKey = null;
+
+function paintCon(state) {
+  const box = $('conmini');
+  const st = conState(state);
+  const key = `${st}~${state?.con?.holder}~${conHolderName(state)}`;
+  if (key === conKey) return;
+  conKey = key;
+
+  if (pendingTake) cancelTake();
+  box.dataset.state = st;
+  $('conSay').hidden = true;
+  const actions = $('conActions');
+  actions.textContent = '';
+
+  if (st === 'mine') {
+    $('conWho').textContent = 'YOU HAVE THE CON';
+    $('conSay').hidden = false;
+    $('conSay').textContent = 'Transport lives on the control page.';
+    const a = el('a', 'btn', 'Open control');
+    a.href = '/control';
+    a.target = '_blank';
+    a.rel = 'noopener';
+    actions.append(a);
+    const rel = el('button', 'btn ghost', 'Release');
+    rel.type = 'button';
+    rel.addEventListener('click', () => ST.command('releaseCon'));
+    actions.append(rel);
+    return;
+  }
+
+  if (st === 'nobody') {
+    $('conWho').textContent = 'NOBODY HAS THE CON';
+    $('conSay').hidden = false;
+    $('conSay').textContent = 'The next console to act claims it.';
+  } else if (st === 'gone') {
+    // The empty chair. Loud here too: she is often the one who notices first.
+    $('conWho').textContent = `${conHolderName(state).toUpperCase()} HAS THE CON BUT THAT CONSOLE IS GONE`;
+    $('conSay').hidden = false;
+    $('conSay').textContent = 'Nobody is driving.';
+  } else {
+    $('conWho').textContent = `${conHolderName(state).toUpperCase()} HAS THE CON`;
+  }
+
+  const b = el('button', st === 'gone' ? 'btn danger' : 'btn', 'Take the con');
+  b.type = 'button';
+  b.addEventListener('click', askTake);
+  actions.append(b);
+}
+
+// ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
 
@@ -1024,7 +1338,10 @@ document.addEventListener('keydown', (e) => {
     if (!$('sheet').classList.contains('hidden')) doSave();
     else openPreview();
   }
-  if (e.key === 'Escape' && !$('sheet').classList.contains('hidden')) closePreview();
+  if (e.key === 'Escape') {
+    if (pendingTake) { cancelTake(); return; }
+    if (!$('sheet').classList.contains('hidden')) closePreview();
+  }
 });
 
 window.addEventListener('beforeunload', (e) => {
@@ -1048,6 +1365,10 @@ ST.store.on((state, isConnected) => {
 
   $('offline').classList.toggle('hidden', isConnected);
   $('showname').textContent = state?.show?.title || 'No show loaded';
+
+  // Painted before the early returns below, because who is driving must never be
+  // skipped just because her working copy did not change.
+  if (state) paintCon(state);
 
   if (!state || !Array.isArray(state.sessions)) {
     // Null or malformed state: keep whatever she has and say nothing is loaded.
@@ -1087,7 +1408,20 @@ ST.store.on((state, isConnected) => {
 setInterval(() => { if (serverState) refreshTotals(); }, 1000);
 
 renderList();
-ST.connect();
+
+// Identify before connect: identity rides on the stream URL, so connecting first
+// would put a nameless console on Doc's "at the desk" list.
+function startStream(identity) {
+  ST.identify(identity);
+  paintWhoami();
+  ST.connect();
+}
+
+(function boot() {
+  const saved = storedIdentity();
+  if (saved) startStream(saved);
+  else openGate('first');
+})();
 </script>
 </body>
 </html>

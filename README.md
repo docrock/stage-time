@@ -89,6 +89,34 @@ you about slide four.
 
 She works at her pace. You stay the only person who can change what is on stage right now.
 
+## Taking the desk
+
+Doc is the TD, but he is also mixing audio and managing the stage, and there are stretches
+where he physically cannot reach the keyboard. So either operator can hold **the con**: the
+authority to run transport.
+
+- **Taking is immediate, not a request.** One confirmed click. A request-and-approve flow
+  would fail at exactly the moment it is needed, because the person you are asking has both
+  hands full.
+- **Nothing is silent.** Every take, hand-off, release and dropped console is announced on
+  every operator screen and stamped with a time.
+- **Editing the rundown is never gated by it.** The producer builds the running order
+  whoever holds the con, and the pending gate above is unchanged. This is about the
+  transport, not the document.
+- **Doc can always take it back.** He is the TD.
+
+The failure this is designed around is not two people fighting over the timer. That is loud
+and self-correcting. It is both of them assuming the other one has it while a segment runs
+past its wrap, which is silent and ruinous. So the holder is stated permanently on every
+console, and if the holder's console disappears, the other screens say so loudly:
+
+```
+  MARIELOU HAS THE CON BUT HER CONSOLE IS GONE        [ Take the con ]
+```
+
+The desk never reassigns itself. A desk that does that is a desk nobody trusts. It tells
+you, and offers one click.
+
 ## Sessions pinned to the clock
 
 The feature the paid tools cannot express. A rundown item is not always "fifteen minutes,

@@ -4,16 +4,16 @@ Ordered by what would hurt most on a show day. Reasoning lives in `docs/dev-plan
 
 ## Now — before the next show
 
+- [ ] **Press Return in the identity field on a real keyboard.** One harness-driven Return
+      did not submit during testing and could not be reproduced. The Continue button always
+      works and a synthetic keydown submits correctly, so this looks like a test-harness
+      quirk rather than a bug. Ten seconds to rule out.
 - [ ] **Two-Mac rehearsal on a real network.** The producer gate has only ever been tested by
       one process talking to itself. Doc on `/control`, Marielou on `/rundown`, edits landing
       as pending, arming them live. Do this at home, not at a venue.
 - [ ] **Real trackpad drag and drop** in `/rundown`. Built and reviewed, never actually dragged.
 - [ ] **Bulletproof the Ecamm link.** Make the control page's Copy button emit an explicit
       `http://` plus the raw LAN IP, never `.local`. This is the exact failure from Sept 20.
-- [ ] **Producer override.** Marielou needs a way to take transport when Doc is tied up in
-      audio. Decided 2026-09-20. This is a permission model, not a button: roles, a visible
-      "who has the con" indicator, and a handoff that cannot leave both of them thinking the
-      other has it. Design it before building it.
 - [ ] **Tailscale.** Up on Darth Nihilus as of 2026-09-20. Still to add: Max Rebo and the
       iPhone 18 Pro Max. Then confirm `/control` reaches the local server from the phone on
       cellular, and that on-site it routes over the LAN rather than out to the internet.
@@ -35,8 +35,10 @@ Ordered by what would hurt most on a show day. Reasoning lives in `docs/dev-plan
       tracked and displayed live, it is just thrown away on exit. This is the feature
       EventTimer charges for and StageTimer does not have at any price.
 - [ ] Multi-day shows in one file, so Saturday to Sunday is not a reload.
-- [ ] Visual check of the control page at phone width. It was verified by measuring computed
-      styles, not by eye.
+- [ ] Visual check of the control page at phone width. Checked at 800px and 1440px by eye,
+      never on real phone hardware or in Safari.
+- [ ] Con bar behaviour over a genuinely dropped network. Only the connected path has been
+      exercised.
 
 ## Later
 
@@ -52,9 +54,12 @@ Ordered by what would hurt most on a show day. Reasoning lives in `docs/dev-plan
 - [x] Transparent overlay mode for Ecamm and OBS
 - [x] Countdown survives a dead server (timestamp maths plus a cached copy)
 - [x] Clock-skew correction between machines
-- [x] 31 smoke tests, including validating the real Dallas rundowns
+- [x] 40 smoke tests, including validating the real Dallas rundowns
 - [x] Both Card Party Dallas rundowns built from Marielou's ROS
 - [x] Friendly terminal hint when a client tries `https://`
+- [x] **Producer override.** Either operator can hold the con. Taking is immediate and
+      confirmed, never a request. A vanished holder raises an alarm rather than a silent
+      handover, and the desk never reassigns itself.
 - [x] **Ad-hoc timer.** Presets plus count-up, suspends and restores the live session, shows
       up in the projection so a break visibly costs you slack, never touches the show file.
 - [x] **Restart survival.** Atomic snapshot after every change, resume on boot with the same

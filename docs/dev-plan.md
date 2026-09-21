@@ -5,7 +5,7 @@ Written 2026-09-20. Revisit after the next show.
 ## Where it stands
 
 v0.1 is built, tested, and running: zero-dependency Node server, five views, SSE push,
-wall-clock pins with live slack, the producer gate, 31 smoke tests, and both real Card
+wall-clock pins with live slack, the producer gate, 40 smoke tests, and both real Card
 Party Dallas rundowns in `shows/`.
 
 What has NOT happened yet: a full rehearsal on two machines over a real network, and any
@@ -48,7 +48,6 @@ The point of this phase is that nothing surprises us live. No new features.
   assuming `https://` on a pasted URL. The server now prints a hint, but the Copy button on
   the control page should emit an explicit `http://` plus the raw IP, never the `.local`
   name.
-- **Producer override.** Confirmed needed on 2026-09-20. See below.
 
 ### Phase 2 — before it is reachable from outside the room
 
@@ -82,27 +81,30 @@ on. Keep it an optional module that a plain clone never touches.
 Free path that works today: put a display view fullscreen on a second screen and use NDI
 Screen Capture from NDI Tools.
 
-## Producer override
+## Producer override — built 2026-09-21
 
-Answered 2026-09-20: **yes, Marielou needs to be able to take transport when Doc is tied up
-in audio.** That changes the model, so it belongs in Phase 1 rather than getting bolted on.
+Shipped. The model, for the record:
 
-The current design has one correct instinct worth keeping: a producer's edit must never
-yank a running timer by accident. Override is not a hole in that, it is the deliberate
-version of it. The distinction to build is between *an edit that happens to affect the live
-session* and *a person consciously taking the desk*.
+The distinction that made it work is between *an edit that happens to affect the live
+session*, which the pending gate already handled, and *a person consciously taking the
+desk*, which is this. Override is not a hole in the gate, it is the deliberate version
+of it.
 
-Sketch, to be designed properly before any code:
-
-- Roles rather than routes. A person is TD or Producer, and either can hold **the con**.
-- One visible "who has the con" indicator on every operator screen. The failure mode to
-  design against is not two people fighting over the timer, it is both of them thinking the
-  other one has it and nobody starting the next segment.
-- Taking the con is explicit and announced: the other console says so immediately and loudly.
-  Handing it over is a single action. No silent transfer.
-- The pending gate stays exactly as it is for ordinary rundown edits. Override is a separate
-  deliberate act, not a way to skip the queue.
+- Roles, not routes. Either operator can hold **the con**: the authority to run transport.
+- Taking is immediate and confirmed, never a request. Request-and-approve fails at exactly
+  the moment it is needed, because the person you would be asking has both hands full.
+- Nothing is silent. Every take, hand-off, release and dropped console is logged and shown.
+- Presence is the SSE connection itself. A closed laptop stops being a connected operator
+  with no heartbeat plumbing, because the stream drops with it.
+- A vanished holder is an alarm, not a footnote, and the desk never reassigns itself.
+  The real failure mode is an empty chair, not a tug of war: two people fighting over the
+  timer is loud and self-correcting, both of them assuming the other has it is silent and
+  ruinous.
+- Rundown editing is never gated. The pending gate is unchanged.
 - Doc can always take it back. He is the TD.
+
+Implementation lives in `lib/con.js`, with the reasoning in comments at the top of the
+file so it survives being read out of context.
 
 ## Open questions
 
