@@ -320,6 +320,25 @@ const server = http.createServer(async (req, res) => {
   return sendFile(res, safe);
 });
 
+// Somebody pointed an https:// URL at us. There is no certificate and there never
+// will be, so the handshake dies before the request exists and the client reports a
+// bare SSL error with no clue what went wrong. Ecamm and OBS both assume https when
+// you paste a URL without a scheme, so this happens to real people on show day.
+// Catch the TLS ClientHello (first byte 0x16) and say so in plain language.
+server.on('clientError', (err, socket) => {
+  const tls = err?.rawPacket?.[0] === 0x16;
+  if (tls) {
+    console.log('\n  ⚠  Something just tried to reach Stage Time over https://');
+    console.log('     There is no certificate here. Use http:// instead, and prefer');
+    console.log('     the raw IP over the .local name:');
+    console.log(`     http://${lanAddresses()[0] || 'localhost'}:${PORT}/presenter?transparent=1\n`);
+  }
+  if (socket.writable) {
+    socket.end(tls ? '' : 'HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+  }
+  socket.destroy();
+});
+
 // ---------------------------------------------------------------------------
 // Boot banner. Nothing about the host machine is hardcoded — we discover the LAN
 // addresses at start, because the production Mac changes from show to show.
