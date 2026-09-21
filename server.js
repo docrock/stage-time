@@ -127,7 +127,9 @@ function saveShow() {
     title: state.show.title,
     subtitle: state.show.subtitle,
     date: state.show.date,
-    sessions: state.sessions.map((s) => ({
+    // Ad-hoc timers never reach the show file. They were not part of the plan and
+    // the plan is what this document records.
+    sessions: state.sessions.filter((s) => !s.adhoc).map((s) => ({
       id: s.id,
       title: s.title,
       speaker: s.speaker,
@@ -199,6 +201,15 @@ function handleCommand(body) {
     case 'reset': S.reset(state); break;
     case 'adjust': S.adjust(state, Number(body.seconds) || 0); break;
     case 'next': S.advance(state); break;
+    case 'adhoc':
+      S.startAdhoc(state, {
+        seconds: Number(body.seconds),
+        title: body.title,
+        mode: body.mode,
+        autostart: body.autostart,
+      });
+      break;
+    case 'endAdhoc': S.endAdhoc(state); break;
     case 'message': S.setMessage(state, body); break;
     case 'clearMessage': S.setMessage(state, { text: '' }); break;
     case 'toggleOption': {
@@ -208,8 +219,7 @@ function handleCommand(body) {
     }
     case 'acceptPending': {
       if (state.pending) {
-        state.sessions = state.pending.sessions.map(S.makeSession);
-        // Preserve done-flags and actuals from the live copy where ids still match.
+        applyRundown(state.pending.sessions.map(S.makeSession));
         state.pending = null;
         saveShow();
       }
@@ -222,21 +232,42 @@ function handleCommand(body) {
   return { ok: true };
 }
 
+// Swap in a new rundown while keeping the two things the producer's copy cannot
+// know about: what has already been played, and any ad-hoc timer running right now.
+function applyRundown(next) {
+  const adhocs = state.sessions.filter((s) => s.adhoc);
+  const prevById = new Map(state.sessions.map((s) => [s.id, s]));
+
+  const merged = next.map((p) => {
+    const prev = prevById.get(p.id);
+    return prev ? { ...p, done: prev.done, actualDuration: prev.actualDuration } : p;
+  });
+
+  // Put each ad-hoc timer back immediately before the session it suspended, matching
+  // startAdhoc: that session is coming back, and the time it is still owed has to stay
+  // ahead of everything downstream or the projection under-counts.
+  for (const a of adhocs) {
+    const anchor = a.resume?.sessionId;
+    const at = anchor ? merged.findIndex((x) => x.id === anchor) : 0;
+    merged.splice(at >= 0 ? at : 0, 0, a);
+  }
+  state.sessions = merged;
+}
+
 // Producer submits the whole rundown. We split it: anything that cannot bite the
 // running show is applied immediately; anything that can waits for the TD.
 function handleRundown(body) {
   const proposed = (body.sessions || []).map(S.makeSession);
   const guardIds = protectedSessionIds(state);
-  const changes = diffSessions(state.sessions, proposed, guardIds);
+  // The producer's copy never contains ad-hoc timers, so they must not be diffed
+  // against it or every break would read as a deletion.
+  const planned = state.sessions.filter((s) => !s.adhoc);
+  const changes = diffSessions(planned, proposed, guardIds);
   if (!changes.length) return { ok: true, applied: 0, pending: 0 };
 
   const guarded = changes.filter((c) => c.guarded);
   if (guarded.length === 0) {
-    const doneById = new Map(state.sessions.map((s) => [s.id, s]));
-    state.sessions = proposed.map((p) => {
-      const prev = doneById.get(p.id);
-      return prev ? { ...p, done: prev.done, actualDuration: prev.actualDuration } : p;
-    });
+    applyRundown(proposed);
     state.pending = null;
     saveShow();
     broadcast();

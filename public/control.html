@@ -211,6 +211,17 @@
   .nudge .btn { padding: 12px 2px; font-family: var(--mono); font-size: 14px; }
   .nudge .btn.less { color: #fca5a5; }
   .nudge .btn.more { color: #86efac; }
+  .adhoc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
+  .adhoc-grid .btn { padding: 12px 2px; font-family: var(--mono); font-size: 14px; }
+  .adhoc-note { font-size: 11px; line-height: 1.4; margin-top: 8px; }
+  .adhoc-live {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    flex-wrap: wrap; font-size: 13px;
+    background: rgb(245 182 10 / 0.12);
+    border: 1px solid rgb(245 182 10 / 0.45);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .adhoc-live b { color: var(--warning); }
   .nudge-legend {
     display: flex;
     justify-content: space-between;
@@ -412,6 +423,29 @@
       <div class="card panel">
         <h2>Display options</h2>
         <div class="toggles" id="toggles"></div>
+      </div>
+
+      <div class="card panel" id="adhocPanel">
+        <h2>Ad-hoc timer</h2>
+        <div class="adhoc-live" id="adhocLive" hidden>
+          <span><b id="adhocTitle"></b> is on the clock. The rundown is holding.</span>
+          <button class="btn warn" id="btnEndAdhoc">End and go back</button>
+        </div>
+        <div id="adhocStart">
+          <div class="adhoc-grid" id="adhocGrid">
+            <button class="btn" data-sec="60">1m</button>
+            <button class="btn" data-sec="120">2m</button>
+            <button class="btn" data-sec="300">5m</button>
+            <button class="btn" data-sec="600">10m</button>
+            <button class="btn" data-sec="900">15m</button>
+            <button class="btn" data-mode="countup">Count up</button>
+          </div>
+          <input class="field" id="adhocLabel" type="text" placeholder="Label (default: Break)" autocomplete="off">
+          <div class="adhoc-note dim">
+            Suspends whatever is live and hands it back with its time intact. Never touches
+            the show file.
+          </div>
+        </div>
       </div>
 
       <div class="card panel">
@@ -694,6 +728,21 @@ $('btnToggle').addEventListener('click', () => ST.command('toggle'));
 $('btnReset').addEventListener('click', () => ST.command('reset'));
 $('btnNext').addEventListener('click', () => ST.command('next'));
 
+// Ad-hoc timer. The label box is optional; an empty one gets a sensible default
+// server-side, because the moment you need this you are not in the mood to type.
+for (const b of $('adhocGrid').querySelectorAll('button')) {
+  b.addEventListener('click', () => {
+    const title = $('adhocLabel').value.trim();
+    if (b.dataset.mode === 'countup') {
+      ST.command('adhoc', { seconds: 1, mode: 'countup', title: title || 'Running' });
+    } else {
+      ST.command('adhoc', { seconds: Number(b.dataset.sec), title: title || undefined });
+    }
+    $('adhocLabel').value = '';
+  });
+}
+$('btnEndAdhoc').addEventListener('click', () => ST.command('endAdhoc'));
+
 for (const b of $('nudge').querySelectorAll('button')) {
   b.addEventListener('click', () => ST.command('adjust', { seconds: Number(b.dataset.sec) }));
 }
@@ -960,6 +1009,18 @@ ST.connect();
 
 // Everything time dependent repaints on the animation frame, using ST.now() so two
 // machines with different system clocks still agree.
+// Swap the ad-hoc panel between "start one" and "one is running". Cached against the
+// id so a per-frame loop is not rewriting the DOM sixty times a second.
+let lastAdhocId = undefined;
+function paintAdhoc(state) {
+  const ad = state.sessions?.find((s) => s.adhoc) || null;
+  if (ad?.id === lastAdhocId) return;
+  lastAdhocId = ad?.id;
+  $('adhocLive').hidden = !ad;
+  $('adhocStart').hidden = !!ad;
+  if (ad) $('adhocTitle').textContent = ad.title;
+}
+
 ST.tick(() => {
   const state = ST.store.state;
   const at = ST.now();
@@ -980,6 +1041,7 @@ ST.tick(() => {
     d.innerHTML = digitsHTML(rem);
   }
 
+  paintAdhoc(state);
   paintRundown(state, at);
 });
 </script>

@@ -165,6 +165,98 @@ test('change summaries read like English', () => {
   assert.equal(changes[0].summary, '"Game" duration: 5m → 7m');
 });
 
+console.log('\nad-hoc timer');
+
+test('suspends the live session and hands it back untouched', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'a');
+  const t0 = 1_000_000_000_000;
+  S.start(st, t0);
+
+  // Two minutes into a ten minute segment, someone needs five minutes.
+  S.startAdhoc(st, { seconds: 300, title: 'Break' }, t0 + 120_000);
+  const ad = S.adhocSession(st);
+  assert.ok(ad, 'ad-hoc timer exists');
+  assert.equal(st.timer.activeSessionId, ad.id);
+  assert.equal(Math.round(S.remainingNow(st, t0 + 120_000)), 300);
+
+  S.endAdhoc(st);
+  assert.equal(st.timer.activeSessionId, 'a', 'back to what was live');
+  assert.equal(Math.round(S.remainingNow(st)), 480, 'the speaker keeps every second they had left');
+  assert.equal(S.adhocSession(st), null, 'and the break is gone from the rundown');
+});
+
+test('sits in the rundown, so the break visibly eats your slack', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'a');
+  const noon = S.pinnedAtToEpoch('12:00');
+  S.start(st, noon);
+  assert.equal(S.projectSchedule(st, noon).find((p) => p.id === 'b').slackSeconds, 600);
+
+  // A ten minute unplanned break at noon. The 12:20 hard call now has no room.
+  S.startAdhoc(st, { seconds: 600, title: 'Technical' }, noon);
+  const after = S.projectSchedule(st, noon).find((p) => p.id === 'b');
+  assert.equal(after.slackSeconds, 0, 'the whole ten minutes came straight out of the slack');
+  assert.equal(after.hard, true);
+});
+
+test('leaves no trace in the analytics', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'a');
+  const t0 = 1_000_000_000_000;
+  S.start(st, t0);
+  S.startAdhoc(st, { seconds: 300 }, t0);
+  S.advance(st, t0 + 300_000); // Next out of the break
+
+  assert.equal(S.adhocSession(st), null);
+  assert.equal(st.timer.activeSessionId, 'a', 'Next means done with the break, not skip ahead');
+  assert.ok(st.sessions.every((s) => !s.adhoc), 'nothing left behind');
+  assert.ok(
+    st.sessions.every((s) => s.actualDuration === null),
+    'a break was never in the plan, so it never becomes planned-versus-actual',
+  );
+});
+
+test('five more minutes still comes back to the right place', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'b');
+  const t0 = 1_000_000_000_000;
+  S.start(st, t0);
+  S.startAdhoc(st, { seconds: 300 }, t0);
+  S.startAdhoc(st, { seconds: 300, title: 'Still waiting' }, t0 + 300_000);
+
+  assert.equal(st.sessions.filter((s) => s.adhoc).length, 1, 'one break, not a pile of them');
+  S.endAdhoc(st);
+  assert.equal(st.timer.activeSessionId, 'b');
+});
+
+test('short timers get tighter warning thresholds', () => {
+  const st = S.makeState(show());
+  const ad = S.startAdhoc(st, { seconds: 120 });
+  assert.equal(ad.wrapUp.yellow, 30, 'a 2 minute break must not be amber from second one');
+});
+
+test('a producer save does not read the break as a deletion', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'a');
+  S.start(st);
+  S.startAdhoc(st, { seconds: 300 });
+
+  // Marielou's copy of the rundown has no idea a break is running.
+  const planned = st.sessions.filter((s) => !s.adhoc);
+  const changes = diffSessions(planned, planned.map((s) => ({ ...s })), protectedSessionIds(st));
+  assert.equal(changes.length, 0, 'no phantom change from a timer she cannot see');
+});
+
+test('an ad-hoc timer with nothing live ends cleanly', () => {
+  const st = S.makeState(show());
+  S.startAdhoc(st, { seconds: 300 });
+  assert.equal(st.sessions[0].adhoc, true, 'goes to the front when no session is armed');
+  S.endAdhoc(st);
+  assert.equal(st.timer.activeSessionId, null);
+  assert.equal(st.timer.isRunning, false);
+});
+
 console.log('\ncrash survival');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'stage-time-test-'));
@@ -222,6 +314,25 @@ test('a session deleted from the show file while down is not resurrected', () =>
   assert.equal(droppedActive, true);
   assert.equal(fresh.timer.activeSessionId, null);
   assert.equal(fresh.timer.isRunning, false, 'never resume onto a session that no longer exists');
+});
+
+test('a crash during a break comes back with the break and a way home', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'a');
+  const t0 = Date.now();
+  S.start(st, t0);
+  S.startAdhoc(st, { seconds: 300, title: 'Technical' }, t0 + 120_000);
+
+  const fresh = S.makeState(show());
+  P.restore(fresh, P.snapshot(st, 'test.json'));
+
+  const ad = S.adhocSession(fresh);
+  assert.ok(ad, 'the break survived');
+  assert.equal(ad.title, 'Technical');
+  assert.equal(fresh.timer.activeSessionId, ad.id, 'and is still what is on the clock');
+  S.endAdhoc(fresh);
+  assert.equal(fresh.timer.activeSessionId, 'a');
+  assert.equal(Math.round(S.remainingNow(fresh)), 480, 'the suspended speaker kept their time');
 });
 
 test('yesterday\'s show does not walk back in', () => {

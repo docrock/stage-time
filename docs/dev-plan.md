@@ -5,7 +5,7 @@ Written 2026-09-20. Revisit after the next show.
 ## Where it stands
 
 v0.1 is built, tested, and running: zero-dependency Node server, five views, SSE push,
-wall-clock pins with live slack, the producer gate, 23 smoke tests, and both real Card
+wall-clock pins with live slack, the producer gate, 31 smoke tests, and both real Card
 Party Dallas rundowns in `shows/`.
 
 What has NOT happened yet: a full rehearsal on two machines over a real network, and any
@@ -48,8 +48,6 @@ The point of this phase is that nothing surprises us live. No new features.
   assuming `https://` on a pasted URL. The server now prints a hint, but the Copy button on
   the control page should emit an explicit `http://` plus the raw IP, never the `.local`
   name.
-- An ad-hoc timer that is not in the rundown. Every live show needs "give me 5 minutes on
-  the clock right now" without touching the running order.
 - **Producer override.** Confirmed needed on 2026-09-20. See below.
 
 ### Phase 2 — before it is reachable from outside the room

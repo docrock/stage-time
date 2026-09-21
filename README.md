@@ -33,7 +33,7 @@ On boot it prints every URL, discovered from the machine it is actually running 
   Presenter (stage)      http://192.168.1.44:7373/presenter
   Public   (audience)    http://192.168.1.44:7373/public
   Agenda   (green room)  http://192.168.1.44:7373/agenda
-  Ecamm / OBS overlay    http://192.168.1.44:7373/presenter?transparent=1&chrome=0
+  Ecamm / OBS overlay    http://192.168.1.44:7373/presenter?transparent=1
   ──────────────────────────────────────────────────────────
 ```
 
@@ -117,6 +117,25 @@ instead of going black in front of four hundred people.
 Clocks that disagree are corrected: each client measures its offset against the server on
 connect and every minute after, so two Macs whose clocks differ by eight seconds still
 show the same timer.
+
+## Ad-hoc timer
+
+Someone needs five minutes and it is not in the rundown. Hit 5m on the control page.
+
+The live session is suspended where it stands and handed back with its time intact, so a
+speaker never pays for the break. The break shows on the stage, on the agenda, and in the
+wall-clock projection, which is the point: ten unplanned minutes visibly eat ten minutes of
+slack from your next hard call. A parallel side timer would have hidden exactly the
+consequence you most need to see.
+
+Presets are 1, 2, 5, 10 and 15 minutes, plus an open-ended count-up for "how long have we
+been down". Give it a label or let it default to Break. Pressing it again while one is
+running replaces it rather than stacking, and still comes back to the right place.
+
+It never reaches the show file, and it never records planned-versus-actual, because it was
+never part of the plan. Next out of a break means "done with the break", not "skip a
+segment". Coming back leaves the segment paused so you start it when the speaker is
+actually ready.
 
 ## If it crashes
 

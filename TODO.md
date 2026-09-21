@@ -10,8 +10,6 @@ Ordered by what would hurt most on a show day. Reasoning lives in `docs/dev-plan
 - [ ] **Real trackpad drag and drop** in `/rundown`. Built and reviewed, never actually dragged.
 - [ ] **Bulletproof the Ecamm link.** Make the control page's Copy button emit an explicit
       `http://` plus the raw LAN IP, never `.local`. This is the exact failure from Sept 20.
-- [ ] **Ad-hoc timer.** "Put 5 minutes on the clock right now" without touching the rundown.
-      Every live show needs it and there is currently no way to do it.
 - [ ] **Producer override.** Marielou needs a way to take transport when Doc is tied up in
       audio. Decided 2026-09-20. This is a permission model, not a button: roles, a visible
       "who has the con" indicator, and a handoff that cannot leave both of them thinking the
@@ -54,9 +52,11 @@ Ordered by what would hurt most on a show day. Reasoning lives in `docs/dev-plan
 - [x] Transparent overlay mode for Ecamm and OBS
 - [x] Countdown survives a dead server (timestamp maths plus a cached copy)
 - [x] Clock-skew correction between machines
-- [x] 23 smoke tests, including validating the real Dallas rundowns
+- [x] 31 smoke tests, including validating the real Dallas rundowns
 - [x] Both Card Party Dallas rundowns built from Marielou's ROS
 - [x] Friendly terminal hint when a client tries `https://`
+- [x] **Ad-hoc timer.** Presets plus count-up, suspends and restores the live session, shows
+      up in the projection so a break visibly costs you slack, never touches the show file.
 - [x] **Restart survival.** Atomic snapshot after every change, resume on boot with the same
       show and a still-running clock. Stale, orphaned, and corrupt snapshots all refused.
       Verified against a real `kill -9`.
