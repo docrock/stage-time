@@ -32,6 +32,14 @@
     text-overflow: ellipsis;
   }
   .st-bottom .st-upnext { text-align: right; }
+  /* The up-next start time. A rundown is padded, so this is the time the outside
+     world was told, not the internal projection. See timeSource() in the script. */
+  .st-bottom .st-upnext .at {
+    margin-left: 0.6em;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
 
   /* Idle: no session selected. A calm standby card, never a fake 00:00. */
   .st-idle {
@@ -77,6 +85,7 @@
     <div class="st-upnext" id="upNext">
       <span class="st-label">Up next</span>
       <b id="nextTitle"></b>
+      <span class="at" id="nextAt" hidden></span>
     </div>
   </div>
 
@@ -101,6 +110,32 @@ const wantProgress = ST.opt('progress', true) !== false;
 const wantTitle    = ST.opt('title', true) !== false;
 const transparent  = ST.opt('transparent', false) === true;
 
+// ?times=live | ?times=published pins this output to one clock regardless of the
+// operator's settings, so a single screen can be forced either way.
+const timesParam = ST.opt('times', null);
+
+// This view faces the audience and the stream. That is the whole reason it holds
+// the published schedule by default.
+const PUBLIC_FACING = true;
+
+// --- which clock a view uses ---------------------------------------------
+// Mirrors PUB.timeSource() in lib/publish.js. lib/ is server-side and is never
+// served to the browser, so the function is duplicated here rather than imported.
+// If one changes, change the other.
+//
+//   live      - follow the internal projection, drift and all
+//   published - hold what the outside world was told
+//
+// A URL parameter always wins. Otherwise public-facing outputs hold the published
+// schedule and internal ones follow live: the green room wants the truth, the
+// lobby wants the plan.
+function timeSource({ param, publicFacing, followLive, hasPublished }) {
+  if (param === 'live' || param === 'published') return param;
+  if (!publicFacing) return 'live';
+  if (followLive) return 'live';
+  return hasPublished ? 'published' : 'live';
+}
+
 const rawScale = Number(ST.opt('scale', 1));
 const scale = Number.isFinite(rawScale) && rawScale > 0 ? rawScale : 1;
 document.documentElement.style.setProperty('--st-scale', scale);
@@ -116,6 +151,7 @@ const el = {
   showTitle: document.getElementById('showTitle'),
   upNext: document.getElementById('upNext'),
   nextTitle: document.getElementById('nextTitle'),
+  nextAt: document.getElementById('nextAt'),
   progress: document.getElementById('progress'),
   progressFill: document.getElementById('progressFill'),
   blackout: document.getElementById('blackout'),
@@ -167,6 +203,42 @@ function phaseFor(state, session, mode) {
 // walks negative. Elapsed is simply the mirror of it.
 function elapsedOf(state) {
   return -ST.remaining(state);
+}
+
+// --- scheduled times ------------------------------------------------------
+// IMPORTANT: none of this touches the countdown. The digits on this screen are
+// always the real live countdown for whatever is on air, because the audience is
+// watching the same segment the speaker is. What holds steady here is the
+// SCHEDULE: the clock time printed next to the up-next segment. A rundown is
+// padded, and the producer absorbs an overrun by trimming a host block or pulling
+// a promo. Moving the printed start time on every internal wobble would announce
+// a delay that is about to be absorbed, and would announce it again three more
+// times before she finished absorbing it.
+
+// What the outside world was told this session would start at.
+function publishedStart(state, id) {
+  return state.published?.times?.[id] ?? null;
+}
+
+// The internal projection for the next segment: it starts when the live one runs
+// out. The server's snapshot in state.projection is the fallback, and the only
+// source when nothing is on air.
+function liveStart(state, session, at) {
+  if (!session) return null;
+  if (ST.activeSession(state)) {
+    return at + Math.max(0, ST.remaining(state, at)) * 1000;
+  }
+  const p = (state.projection || []).find((x) => x.id === session.id);
+  return p?.projectedStart ?? null;
+}
+
+// The clock time to print for a session, from whichever document this output is
+// following. Null means there is nothing honest to print, so print nothing: an
+// audience screen gets no empty states and no warnings.
+function scheduledStart(state, session, at, source) {
+  if (!session) return null;
+  if (source === 'published') return publishedStart(state, session.id);
+  return liveStart(state, session, at);
 }
 
 // --- render ---------------------------------------------------------------
@@ -249,7 +321,21 @@ function render() {
 
   const upNextOn = wantUpNext && timer.showUpNext !== false && Boolean(next);
   show(el.upNext, 'upNextShown')(upNextOn);
-  if (upNextOn) text(el.nextTitle, 'nextText')(next.title || '');
+  if (upNextOn) {
+    text(el.nextTitle, 'nextText')(next.title || '');
+
+    // The up-next timing holds the published schedule by default. The countdown
+    // above is untouched by this: it is still the live one.
+    const source = timeSource({
+      param: timesParam,
+      publicFacing: PUBLIC_FACING,
+      followLive: timer.publicFollowsLive === true,
+      hasPublished: Boolean(state.published?.at),
+    });
+    const startAt = scheduledStart(state, next, nowMs, source);
+    show(el.nextAt, 'nextAtShown')(startAt != null);
+    if (startAt != null) text(el.nextAt, 'nextAtText')(ST.fmtTimeOfDay(startAt));
+  }
 
   show(el.footer, 'footerShown')(showTitleOn || upNextOn);
 

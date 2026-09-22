@@ -54,9 +54,14 @@ Ordered by what would hurt most on a show day. Reasoning lives in `docs/dev-plan
 - [x] Transparent overlay mode for Ecamm and OBS
 - [x] Countdown survives a dead server (timestamp maths plus a cached copy)
 - [x] Clock-skew correction between machines
-- [x] 40 smoke tests, including validating the real Dallas rundowns
+- [x] 48 smoke tests, including validating the real Dallas rundowns
 - [x] Both Card Party Dallas rundowns built from Marielou's ROS
 - [x] Friendly terminal hint when a client tries `https://`
+- [x] **Published schedule for public outputs.** Audience screens hold the plan while the
+      producer absorbs overruns; the console shows the drift and republishing is a
+      deliberate human act.
+- [x] **Tester onboarding.** Fictional demo rundown, TESTING.md walkthrough, issue template,
+      and docs/SHARING.md covering who can safely be given access.
 - [x] **Producer override.** Either operator can hold the con. Taking is immediate and
       confirmed, never a request. A vanished holder raises an alarm rather than a silent
       handover, and the desk never reassigns itself.

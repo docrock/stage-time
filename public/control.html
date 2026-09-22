@@ -322,6 +322,47 @@
   .share-row input.field { font-family: var(--mono); font-size: 12px; padding: 7px 9px; }
   .share-row .btn { flex: none; padding: 7px 10px; font-size: 12px; }
 
+  /* --- public schedule ---------------------------------------------------- */
+
+  /* The published schedule is a second document, not another display switch, so it
+     gets its own frame. Everything in here changes what an audience sees. */
+  .pub-when { font-size: 12px; line-height: 1.45; }
+  .pub-drift {
+    margin: 9px 0 10px;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+  /* Calm is deliberately quiet. Drift inside the padding is normal, and a console
+     that shouts about normal is a console people stop reading. */
+  .pub-drift[data-level='calm'] { color: var(--muted); }
+  .pub-drift[data-level='amber'] { color: var(--warning); }
+  .pub-drift[data-level='red'] { color: var(--danger); }
+
+  #btnPublish { width: 100%; padding: 13px 10px; font-size: 15px; }
+
+  /* Inline confirm, same reasoning as the arm confirm and the con confirm: a browser
+     confirm() steals focus and blanks a live console. */
+  #pubConfirm {
+    display: none;
+    margin-top: 9px;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  #pubPanel[data-confirming='true'] #pubConfirm { display: flex; }
+  #pubConfirm .q {
+    flex: 1 1 100%;
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffd873;
+    line-height: 1.35;
+  }
+  #pubConfirm .btn { padding: 8px 12px; font-size: 13px; flex: 1 1 100px; }
+
+  .pub-toggles { grid-template-columns: 1fr; margin-top: 11px; }
+  .pub-note { font-size: 11px; line-height: 1.45; margin-top: 6px; }
+
   /* --- identity gate ------------------------------------------------------ */
 
   /* A browser prompt() blocks the render loop and cannot be styled, so on a console
@@ -709,6 +750,30 @@
         </div>
       </div>
 
+      <!-- The published schedule: what the outside world was told. It sits next to the
+           share links because those links are the outputs it governs. -->
+      <div class="card panel" id="pubPanel" data-confirming="false">
+        <h2>Public schedule</h2>
+        <!-- Placeholder copy only. Both lines are rewritten on the first painted frame. -->
+        <div class="pub-when muted" id="pubWhen">Never published.</div>
+        <div class="pub-drift" id="pubDrift" data-level="calm">Nothing published yet</div>
+        <button class="btn primary" id="btnPublish" type="button">Publish now</button>
+        <div id="pubConfirm">
+          <span class="q" id="pubConfirmQ">Move the public schedule?</span>
+          <button class="btn danger" id="pubConfirmYes" type="button">Yes, publish</button>
+          <button class="btn ghost" id="pubConfirmNo" type="button">Cancel</button>
+        </div>
+        <div class="toggles pub-toggles">
+          <button class="tgl" id="tglFollowLive" type="button" data-key="publicFollowsLive" data-on="false">
+            <span class="led"></span><span>Public outputs follow live times</span>
+          </button>
+        </div>
+        <div class="pub-note dim">
+          When this is off, public outputs hold the published schedule and ignore internal drift.
+        </div>
+        <div class="lock-note" id="lockPublish" hidden></div>
+      </div>
+
       <div class="card panel">
         <h2>Share these links</h2>
         <div id="shares"></div>
@@ -1020,6 +1085,8 @@ function gatedControls() {
     $('btnToggle'), $('btnReset'), $('btnNext'), $('btnEndAdhoc'),
     $('btnSend'), $('btnClearMsg'), $('btnLoadShow'),
     $('pendApply'), $('pendReject'),
+    // Publishing moves what an audience sees, so it is transport, not editing.
+    $('btnPublish'), $('pubConfirmYes'), $('tglFollowLive'),
     ...$('nudge').querySelectorAll('button'),
     ...$('toggles').querySelectorAll('button'),
     ...$('adhocGrid').querySelectorAll('button'),
@@ -1037,8 +1104,10 @@ function paintLock(state) {
   if (key === lockKey) return;
   lockKey = key;
   for (const b of gatedControls()) if (b) b.disabled = locked;
+  // A half-made publish decision cannot survive losing the desk.
+  if (locked) closePubConfirm();
   const why = `${conHolderName(state)} has the con.`;
-  for (const id of ['lockTransport', 'lockMsg']) {
+  for (const id of ['lockTransport', 'lockMsg', 'lockPublish']) {
     const n = $(id);
     n.hidden = !locked;
     n.textContent = locked ? `${why} Take it above to drive.` : '';
@@ -1094,6 +1163,137 @@ function slackClass(sec) {
 function slackText(sec) {
   if (sec < 0) return `LATE by ${ST.fmtDuration(-sec)}`;
   return `${ST.fmtDuration(sec)} slack`;
+}
+
+// ---------------------------------------------------------------------------
+// The published schedule
+//
+// The internal clock and the public clock are not the same document. A rundown is
+// padded on purpose: when a segment stretches, the producer absorbs it by trimming a
+// host-led block or pulling a promo reel. So public outputs hold the published times
+// and do not flinch at internal drift, and republishing is a deliberate human act.
+// This panel exists to make that decision, not to automate it.
+// ---------------------------------------------------------------------------
+
+// Where the readout changes colour. These are a judgement call, not physics: under two
+// minutes the padding normally swallows the drift without anyone noticing, and past
+// five it is a conversation rather than a wobble. Named here so they can be argued
+// with in one place instead of being buried in the paint code.
+const DRIFT_CALM_SECONDS = 120;
+const DRIFT_AMBER_SECONDS = 300;
+
+// Under a second of drift is the same thing as none. Rounding noise should never turn
+// "on the schedule" into a confirm dialogue.
+const DRIFT_DEADBAND_SECONDS = 1;
+
+function driftLevel(sec) {
+  const mag = Math.abs(sec);
+  if (mag < DRIFT_CALM_SECONDS) return 'calm';
+  if (mag < DRIFT_AMBER_SECONDS) return 'amber';
+  return 'red';
+}
+
+// state.publishDrift is computed server-side at broadcast time, so it freezes between
+// pushes: with the clock paused the projection keeps sliding while that number sits
+// still. It is the same arithmetic the rundown already reprojects every frame, so we
+// recompute it here and fall back to the server's number when we cannot.
+function driftNow(state, at) {
+  if (!state?.published?.at) return null;
+  const proj = projectNow(state, at);
+  for (const [id, p] of proj) {
+    const pub = state.published.times?.[id];
+    if (pub == null) continue;
+    return { sessionId: id, seconds: Math.round((p.projectedStart - pub) / 1000) };
+  }
+  return state.publishDrift || null;
+}
+
+function driftText(d) {
+  if (!d) return 'Nothing published yet';
+  if (Math.abs(d.seconds) < DRIFT_DEADBAND_SECONDS) return 'On the published schedule';
+  return d.seconds > 0
+    ? `Running ${ST.fmtDuration(d.seconds)} behind what the public sees`
+    : `Running ${ST.fmtDuration(-d.seconds)} ahead of what the public sees`;
+}
+
+// The confirm names the drift because that is the decision being made: not "publish?"
+// but "move the audience's schedule by this much?".
+function publishQuestion(d) {
+  return d.seconds > 0
+    ? `Move the public schedule ${ST.fmtDuration(d.seconds)} later?`
+    : `Move the public schedule ${ST.fmtDuration(-d.seconds)} earlier?`;
+}
+
+// The published stamp the confirm was raised against. If somebody else publishes while
+// this question is on screen, the question is about a world that has moved on.
+let pubConfirmAt = null;
+
+function closePubConfirm() {
+  pubConfirmAt = null;
+  $('pubPanel').dataset.confirming = 'false';
+}
+
+$('btnPublish').addEventListener('click', () => {
+  const state = ST.store.state;
+  if (isLocked()) {
+    flash(`${conHolderName(state)} has the con. Take it to publish.`);
+    return;
+  }
+  const d = driftNow(state, ST.now());
+  // Nothing has drifted, so nothing an audience can see will move. No confirm needed.
+  if (!d || Math.abs(d.seconds) < DRIFT_DEADBAND_SECONDS) {
+    closePubConfirm();
+    cmd('publish');
+    return;
+  }
+  pubConfirmAt = state?.published?.at ?? null;
+  $('pubConfirmQ').textContent = publishQuestion(d);
+  $('pubPanel').dataset.confirming = 'true';
+  $('pubConfirmYes').focus();
+});
+
+$('pubConfirmYes').addEventListener('click', async () => {
+  closePubConfirm();
+  const res = await cmd('publish');
+  if (res?.ok) flash('Public schedule republished.');
+});
+$('pubConfirmNo').addEventListener('click', closePubConfirm);
+
+$('tglFollowLive').addEventListener('click', () => cmd('toggleOption', { key: 'publicFollowsLive' }));
+
+// Cached DOM writes: this runs every frame, so nothing is rewritten unless it changed.
+let pubWhenText = null;
+let pubDriftText = null;
+let pubDriftLevel = null;
+
+function paintPublish(state, at) {
+  const at0 = state?.published?.at ?? null;
+
+  // A confirm raised against an older publish is stale: drop it rather than let a
+  // click answer a question nobody is asking any more.
+  if ($('pubPanel').dataset.confirming === 'true' && at0 !== pubConfirmAt) closePubConfirm();
+
+  const when = at0
+    ? `Published at ${ST.fmtTimeOfDay(at0)}.`
+    : 'Never published. Public outputs are following live times until you publish.';
+  if (when !== pubWhenText) {
+    pubWhenText = when;
+    $('pubWhen').textContent = when;
+  }
+
+  const d = driftNow(state, at);
+  const text = driftText(d);
+  if (text !== pubDriftText) {
+    pubDriftText = text;
+    $('pubDrift').textContent = text;
+  }
+  const level = d ? driftLevel(d.seconds) : 'calm';
+  if (level !== pubDriftLevel) {
+    pubDriftLevel = level;
+    $('pubDrift').dataset.level = level;
+  }
+
+  $('tglFollowLive').dataset.on = String(!!state?.timer?.publicFollowsLive);
 }
 
 // ---------------------------------------------------------------------------
@@ -1467,6 +1667,7 @@ document.addEventListener('keydown', (e) => {
   // whoever is driving.
   if (e.key === 'Escape') {
     if (pendingTake) { cancelTake(); return; }
+    if ($('pubPanel').dataset.confirming === 'true') { closePubConfirm(); return; }
     armingId = null;
     for (const r of $('rows').children) r.dataset.arming = 'false';
     return;
@@ -1602,6 +1803,9 @@ ST.tick(() => {
 
   paintAdhoc(state);
   paintRundown(state, at);
+  // Drift keeps moving while the clock is paused, so this belongs on the frame loop
+  // rather than on the state push.
+  paintPublish(state, at);
 });
 </script>
 </body>

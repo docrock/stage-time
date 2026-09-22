@@ -83,6 +83,37 @@ ST.command(action, extra)           // POST /api/command
 from the producer view. The server applies changes that cannot affect the live or next
 session immediately, and parks the rest in `state.pending` for the TD to arm.
 
+## The published schedule (what the outside world was told)
+
+The internal clock and the public clock are not the same document.
+
+A rundown is padded on purpose. When a segment stretches, the producer absorbs it by
+trimming a host-led block or pulling a promo reel. So the published times stay true even
+while the internal projection drifts, and pushing every internal wobble onto an audience
+screen would announce a delay that is about to be absorbed.
+
+State carries:
+
+```js
+published: { at, times: { sessionId: epochMs } }   // at is null until first publish
+publishDrift: { sessionId, seconds, publishedStart, projectedStart } | null
+timer.publicFollowsLive: false
+```
+
+`publishDrift.seconds` is positive when running late, measured against the next session
+that has not happened yet. `null` means nothing has been published.
+
+Command: `publish` (con-gated). It snapshots the schedule as it currently projects. That
+republish is the deliberate human act: somebody looked at the drift and decided the padding
+could not swallow it.
+
+**Which clock a view uses** comes from `PUB.timeSource` logic, mirrored client-side:
+
+- `?times=live` or `?times=published` on the URL always wins.
+- Public-facing outputs otherwise hold the published schedule, unless
+  `timer.publicFollowsLive` is on or nothing has been published yet.
+- Internal views follow live. The green room wants the truth, the lobby wants the plan.
+
 ## The con (who is driving)
 
 Two people run these shows. Either can hold **the con**: the authority to run transport.

@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import * as S from './lib/state.js';
 import * as P from './lib/persist.js';
 import * as C from './lib/con.js';
+import * as PUB from './lib/publish.js';
 import { diffSessions, protectedSessionIds } from './lib/diff.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -178,6 +179,8 @@ function payload() {
     timer: state.timer,
     message: state.message,
     pending: state.pending,
+    published: state.published,
+    publishDrift: PUB.drift(state, S.projectSchedule),
     con: state.con,
     operators: ops,
     // Called out separately so no view has to work it out for itself, and so the
@@ -281,6 +284,7 @@ function handleCommand(body) {
       });
       break;
     case 'endAdhoc': S.endAdhoc(state); break;
+    case 'publish': PUB.publish(state, S.projectSchedule); break;
     case 'message': S.setMessage(state, body); break;
     case 'clearMessage': S.setMessage(state, { text: '' }); break;
     case 'toggleOption': {

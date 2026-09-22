@@ -8,6 +8,10 @@ devices, and because every one of them falls over in exactly the venue where you
 them most: a convention hall whose wifi is either hostile or being sold back to you at
 5 Mbps.
 
+New here? [TESTING.md](TESTING.md) is the walkthrough, and it uses a dummy show with
+made-up people. Sharing this repo with anyone? Read [docs/SHARING.md](docs/SHARING.md)
+first.
+
 ## Run it
 
 ```bash
@@ -88,6 +92,27 @@ it. Everything further down the rundown applies silently so the producer is not 
 you about slide four.
 
 She works at her pace. You stay the only person who can change what is on stage right now.
+
+## The public clock is not the internal clock
+
+A rundown is padded on purpose. When a segment stretches, the producer absorbs it by
+trimming a host-led block or pulling a promo reel. The flexibility is already built in.
+
+So audience-facing outputs hold a **published schedule** and do not flinch at internal
+drift. Pushing every wobble onto a lobby screen would announce a delay that is about to be
+absorbed, and would announce it three more times before the producer finished absorbing it.
+
+Publish from the console when the show is set. From then on:
+
+- `/public` holds the published times. The countdown itself is always the real live
+  countdown for whatever is on air. What holds steady is the schedule around it.
+- `/agenda` follows live and tells the producer how far there is to absorb:
+  "4m 20s behind the published schedule".
+- Republishing is the deliberate act. Somebody looked at the drift and decided the padding
+  could not swallow it.
+
+Override either way: the toggle "Public outputs follow live times" on the console, or
+`?times=live` / `?times=published` on any single output.
 
 ## Taking the desk
 
@@ -216,8 +241,9 @@ A rundown is one JSON file in `shows/`. It travels with the clone, diffs readabl
 and hands to anyone without an export step. The show file is the document. Last year's
 conference is still sitting there when the client rebooks.
 
-Real ones are in there now: `card-party-dallas-day1.json` and `day2.json`, built from
-Marielou's run of show.
+Real ones are in there: `card-party-dallas-day1.json` and `day2.json`, built from
+Marielou's run of show. `demo-creator-summit.json` is a made-up one for testing and demos,
+and it is the one to point testers at.
 
 ## The rule that matters most
 

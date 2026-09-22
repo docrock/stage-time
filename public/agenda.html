@@ -75,6 +75,21 @@
     text-overflow: ellipsis;
   }
 
+  /* How far the internal show has wandered from what the public was told, or a
+     plain statement that this board is showing the published plan instead of the
+     truth. Sits under the show name because it qualifies the whole board. */
+  .ag-pubnote {
+    flex: none;
+    font-size: clamp(11px, 1.5vh, 17px);
+    font-weight: 800;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .ag-pubnote.calm  { color: var(--running); }
+  .ag-pubnote.amber { color: var(--warning); }
+  .ag-pubnote.late  { color: var(--danger); }
+  .ag-pubnote.held  { color: #a5b4fc; }
+
   /* Whole-event summary. Counts, time left in the whole show, and one bar. */
   .ag-summary {
     margin-left: auto;
@@ -241,6 +256,10 @@
       <h1 id="showTitle">Stage Time</h1>
       <div class="sub" id="showSub"></div>
     </div>
+    <!-- Its own header item, not a third line under the show name. The show name
+         may be ellipsed to make room, this must not be: a half-read drift figure
+         is worse than no drift figure. -->
+    <div class="ag-pubnote" id="pubNote" hidden></div>
     <div class="ag-summary">
       <div class="ag-stat"><span class="k">Done</span><span class="v" id="statDone">0 of 0</span></div>
       <div class="ag-stat"><span class="k">Time left</span><span class="v" id="statLeft">0m</span></div>
@@ -267,11 +286,59 @@ const SHOW_UPNEXT = ST.opt('upnext', true);
 // ?title=0 is deliberately ignored here. On a timer view it hides one label; on a
 // board that is nothing but titles it would leave an empty rectangle.
 
+// ?times=live | ?times=published pins this board to one clock.
+const TIMES_PARAM = ST.opt('times', null);
+
+// This is the green room board. The people reading it are running the show, so it
+// follows the live projection by default. ?times=published is the escape hatch for
+// hanging the same board in a lobby.
+const PUBLIC_FACING = false;
+
+// --- which clock a view uses ---------------------------------------------
+// Mirrors PUB.timeSource() in lib/publish.js. lib/ is server-side and is never
+// served to the browser, so the function is duplicated here rather than imported.
+// If one changes, change the other.
+//
+//   live      - follow the internal projection, drift and all
+//   published - hold what the outside world was told
+//
+// A URL parameter always wins. Otherwise public-facing outputs hold the published
+// schedule and internal ones follow live: the green room wants the truth, the
+// lobby wants the plan.
+function timeSource({ param, publicFacing, followLive, hasPublished }) {
+  if (param === 'live' || param === 'published') return param;
+  if (!publicFacing) return 'live';
+  if (followLive) return 'live';
+  return hasPublished ? 'published' : 'live';
+}
+
+// Drift is the producer's padding gauge: how much of the slack she has already
+// spent. Under two minutes a stretched segment is absorbed by trimming a host
+// block and nobody outside the room ever knows. Out to five she is pulling a
+// promo reel to get it back. Past that the padding is gone and somebody has to
+// look at the drift and republish.
+const DRIFT_THRESHOLDS = { calm: 120, amber: 300 };   // seconds
+
+function driftClass(seconds) {
+  const off = Math.abs(seconds);
+  if (off <= DRIFT_THRESHOLDS.calm) return 'calm';
+  if (off <= DRIFT_THRESHOLDS.amber) return 'amber';
+  return 'late';
+}
+
+// Plain language, the way a producer says it out loud.
+function driftText(seconds) {
+  if (seconds > 0) return `${ST.fmtDuration(seconds)} behind the published schedule`;
+  if (seconds < 0) return `${ST.fmtDuration(-seconds)} ahead of the published schedule`;
+  return 'On the published schedule';
+}
+
 const el = {
   alarm: document.getElementById('alarm'),
   alarmText: document.getElementById('alarmText'),
   showTitle: document.getElementById('showTitle'),
   showSub: document.getElementById('showSub'),
+  pubNote: document.getElementById('pubNote'),
   statDone: document.getElementById('statDone'),
   statLeft: document.getElementById('statLeft'),
   eventBar: document.getElementById('eventBar'),
@@ -508,6 +575,37 @@ function paint() {
 
   const at = ST.now();
 
+  // Which document this board is reading from. Recomputed each paint because the
+  // operator can flip publicFollowsLive, and the first publish can land, mid show.
+  const source = timeSource({
+    param: TIMES_PARAM,
+    publicFacing: PUBLIC_FACING,
+    followLive: state.timer?.publicFollowsLive === true,
+    hasPublished: Boolean(state.published?.at),
+  });
+
+  // Header note. Two mutually exclusive jobs.
+  //
+  // Showing published times: say so plainly. A board in the green room and a board
+  // in the lobby look identical from across the room, and somebody mistaking the
+  // lobby copy for the real state is exactly the failure worth preventing.
+  //
+  // Following live: report the drift. That number is how much padding the producer
+  // still has to absorb before she has to republish.
+  if (source === 'published') {
+    setText(el.pubNote, 'Showing published times');
+    setAttr(el.pubNote, 'class', 'ag-pubnote held');
+    el.pubNote.hidden = false;
+  } else if (state.publishDrift) {
+    setText(el.pubNote, driftText(state.publishDrift.seconds));
+    setAttr(el.pubNote, 'class', `ag-pubnote ${driftClass(state.publishDrift.seconds)}`);
+    el.pubNote.hidden = false;
+  } else {
+    // Nothing published yet, so there is no second document to be out of step
+    // with. No empty state, no warning, just the board.
+    el.pubNote.hidden = true;
+  }
+
   // Wall clock. Hidden when either the URL or the operator says so.
   const wantClock = SHOW_CLOCK !== false && state.timer?.showClock !== false;
   el.clock.hidden = !wantClock;
@@ -530,7 +628,17 @@ function paint() {
 
   for (const r of pinnedRows) {
     const p = proj.get(r.id) || server.get(r.id) || {};
-    if (r.whenEl && p.projectedStart) setText(r.whenEl, ST.fmtTimeOfDay(p.projectedStart));
+
+    // The start time printed on the row. In published mode it is the time the
+    // outside world was told, which does not move until a human republishes. A
+    // session added to the rundown after the last publish has no published time,
+    // so it falls back to the live projection rather than printing a blank row.
+    const pubStart = state.published?.times?.[r.id] ?? null;
+    const whenAt = source === 'published' && pubStart != null ? pubStart : p.projectedStart;
+    if (r.whenEl && whenAt) setText(r.whenEl, ST.fmtTimeOfDay(whenAt));
+
+    // Slack stays on the live projection either way: it answers whether a pinned
+    // start is about to be missed, which is a fact about the real show.
     if (!r.slackEl) continue;
     const slack = p.slackSeconds ?? null;
     const view = slackView(slack);

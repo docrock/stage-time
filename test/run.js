@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import * as S from '../lib/state.js';
 import * as P from '../lib/persist.js';
 import * as C from '../lib/con.js';
+import * as PUB from '../lib/publish.js';
 import { diffSessions, protectedSessionIds } from '../lib/diff.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -256,6 +257,93 @@ test('an ad-hoc timer with nothing live ends cleanly', () => {
   S.endAdhoc(st);
   assert.equal(st.timer.activeSessionId, null);
   assert.equal(st.timer.isRunning, false);
+});
+
+console.log('\npublished schedule');
+
+test('publishing snapshots the schedule as it currently projects', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'a');
+  const noon = S.pinnedAtToEpoch('12:00');
+  S.start(st, noon);
+  PUB.publish(st, S.projectSchedule, noon);
+
+  assert.equal(st.published.at, noon);
+  assert.equal(PUB.publishedStart(st, 'a'), noon, 'the live session starts now');
+  assert.equal(PUB.publishedStart(st, 'b'), noon + 600_000, 'and b follows ten minutes later');
+});
+
+test('internal drift does not move the published times', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'a');
+  const noon = S.pinnedAtToEpoch('12:00');
+  S.start(st, noon);
+  PUB.publish(st, S.projectSchedule, noon);
+
+  // The opener runs seven minutes long. The rundown is padded for exactly this, so
+  // the producer will absorb it by trimming a host block or pulling a promo reel.
+  S.adjust(st, 420, noon);
+
+  assert.equal(PUB.publishedStart(st, 'b'), noon + 600_000, 'the lobby screen must not flinch');
+  const d = PUB.drift(st, S.projectSchedule, noon);
+  assert.equal(d.sessionId, 'b');
+  assert.equal(d.seconds, 420, 'but the operator is told exactly how much there is to absorb');
+});
+
+test('drift goes negative when the show pulls time back', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'a');
+  const noon = S.pinnedAtToEpoch('12:00');
+  S.start(st, noon);
+  PUB.publish(st, S.projectSchedule, noon);
+  S.adjust(st, -180, noon); // a host block got trimmed
+  assert.equal(PUB.drift(st, S.projectSchedule, noon).seconds, -180, 'running early is drift too');
+});
+
+test('republishing is the deliberate act that moves the public clock', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'a');
+  const noon = S.pinnedAtToEpoch('12:00');
+  S.start(st, noon);
+  PUB.publish(st, S.projectSchedule, noon);
+  S.adjust(st, 420, noon);
+
+  // Somebody looked at the drift and decided the padding could not swallow it.
+  PUB.publish(st, S.projectSchedule, noon);
+  assert.equal(PUB.publishedStart(st, 'b'), noon + 1_020_000);
+  assert.equal(PUB.drift(st, S.projectSchedule, noon).seconds, 0, 'and the drift resets');
+});
+
+test('nothing has drifted before anything is published', () => {
+  const st = S.makeState(show());
+  assert.equal(PUB.drift(st, S.projectSchedule), null);
+});
+
+test('an ad-hoc break shows up as drift, not as a moved public time', () => {
+  const st = S.makeState(show());
+  S.selectSession(st, 'a');
+  const noon = S.pinnedAtToEpoch('12:00');
+  S.start(st, noon);
+  PUB.publish(st, S.projectSchedule, noon);
+
+  S.startAdhoc(st, { seconds: 600, title: 'Technical' }, noon);
+  assert.equal(PUB.publishedStart(st, 'b'), noon + 600_000);
+  assert.equal(PUB.drift(st, S.projectSchedule, noon).seconds, 600);
+});
+
+test('which clock a view uses', () => {
+  const live = { param: null, publicFacing: false, followLive: false, hasPublished: true };
+  assert.equal(PUB.timeSource(live), 'live', 'the green room wants the truth');
+
+  const lobby = { param: null, publicFacing: true, followLive: false, hasPublished: true };
+  assert.equal(PUB.timeSource(lobby), 'published', 'the lobby wants the plan');
+
+  assert.equal(PUB.timeSource({ ...lobby, followLive: true }), 'live',
+    'unless the operator has chosen to let it follow');
+  assert.equal(PUB.timeSource({ ...lobby, hasPublished: false }), 'live',
+    'and with nothing published there is nothing to hold');
+  assert.equal(PUB.timeSource({ ...lobby, param: 'live' }), 'live', 'a URL parameter always wins');
+  assert.equal(PUB.timeSource({ ...live, param: 'published' }), 'published');
 });
 
 console.log('\nthe con');
